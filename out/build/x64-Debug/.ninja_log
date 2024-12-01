@@ -1,0 +1,27 @@
+# ninja log v5
+13	699	7547021785668389	CMakeFiles/OptimizationProject.dir/Shekel/ShekelProblem.cpp.obj	42c67b2946bf6989
+36	705	7547021785738406	CMakeFiles/OptimizationProject.dir/src/IConstrainedOptProblemFamily.cpp.obj	c8a9baace0857c61
+17	707	7547021785788415	CMakeFiles/OptimizationProject.dir/src/IOptProblem.cpp.obj	68612d63d5367f06
+24	713	7547021785848429	CMakeFiles/OptimizationProject.dir/src/IGeneralOptProblem.cpp.obj	a616e6209fde9bc2
+20	711	7547021785728402	CMakeFiles/OptimizationProject.dir/src/IOptProblemFamily.cpp.obj	c8b838997b4f592f
+10	711	7547021785688392	CMakeFiles/OptimizationProject.dir/Hill/HillProblem.cpp.obj	2f9c970f69d3fd68
+28	712	7547021785818421	CMakeFiles/OptimizationProject.dir/src/IGeneralOptProblemFamily.cpp.obj	fcd0a0d2032cb714
+32	720	7547021785928449	CMakeFiles/OptimizationProject.dir/src/IConstrainedOptProblem.cpp.obj	a2f29e7eb0391b8b
+3	741	7547021786128499	CMakeFiles/OptimizationProject.dir/MethodStrongina/Source.cpp.obj	619a3ef9cc62808d
+741	1129	7547021789719305	OptimizationProject.exe	12fb48124e298918
+3	644	7547027973999337	CMakeFiles/OptimizationProject.dir/MethodStrongina/Source.cpp.obj	619a3ef9cc62808d
+645	816	7547027975179608	OptimizationProject.exe	12fb48124e298918
+9	230	7547088419310839	CMakeFiles/OptimizationProject.dir/Hill/HillProblem.cpp.obj	2f9c970f69d3fd68
+13	235	7547088419360843	CMakeFiles/OptimizationProject.dir/Shekel/ShekelProblem.cpp.obj	42c67b2946bf6989
+3	468	7547104612847799	CMakeFiles/OptimizationProject.dir/MethodStrongina/Source.cpp.obj	619a3ef9cc62808d
+469	711	7547104614538158	OptimizationProject.exe	12fb48124e298918
+3	450	7547111902735306	CMakeFiles/OptimizationProject.dir/MethodStrongina/Source.cpp.obj	619a3ef9cc62808d
+451	625	7547111904024405	OptimizationProject.exe	12fb48124e298918
+13	481	7547113138334064	CMakeFiles/OptimizationProject.dir/MethodStrongina/Source.cpp.obj	619a3ef9cc62808d
+482	710	7547113140114455	OptimizationProject.exe	12fb48124e298918
+13	462	7547113976594324	CMakeFiles/OptimizationProject.dir/MethodStrongina/Source.cpp.obj	619a3ef9cc62808d
+463	646	7547113977894616	OptimizationProject.exe	12fb48124e298918
+13	463	7547117176866635	CMakeFiles/OptimizationProject.dir/MethodStrongina/Source.cpp.obj	619a3ef9cc62808d
+464	695	7547117178667035	OptimizationProject.exe	12fb48124e298918
+14	462	7547118629997660	CMakeFiles/OptimizationProject.dir/MethodStrongina/Source.cpp.obj	619a3ef9cc62808d
+462	625	7547118631217946	OptimizationProject.exe	12fb48124e298918
