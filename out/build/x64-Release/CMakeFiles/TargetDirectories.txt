@@ -1,3 +1,0 @@
-C:/Users/Даниил Ануфриев/source/repos/MethodStrongina/out/build/x64-Release/CMakeFiles/OptimizationProject.dir
-C:/Users/Даниил Ануфриев/source/repos/MethodStrongina/out/build/x64-Release/CMakeFiles/edit_cache.dir
-C:/Users/Даниил Ануфриев/source/repos/MethodStrongina/out/build/x64-Release/CMakeFiles/rebuild_cache.dir
