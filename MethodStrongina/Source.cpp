@@ -47,15 +47,17 @@ private:
     double r;
     const T& function;
     ofstream logFile;
-    int exitMainCount;
-    int exitTestCount;
+    int exitMainHillCount;
+    int exitMainShekelCount;
+    int exitTestHillCount;
+    int exitTestShekelCount;
 
     vector<Point> points;
 
 public:
     Minimizer(vector<double> a, vector<double> b, double eps, double r, const T& func)
         : leftBound(a), rightBound(b), epsilon(eps), r(r), function(func),
-        exitMainCount(0), exitTestCount(0)
+        exitMainHillCount(0), exitMainShekelCount(0), exitTestHillCount(0), exitTestShekelCount(0)
     {
         logFile.open("minimization_log.txt");
         if (!logFile.is_open()) {
@@ -194,7 +196,7 @@ int main() {
     MyFunction func;
 
     // Количество случайных функций для тестирования
-    int numTests = 10;
+    int numTests = 1000;
 
     THillProblemFamily hillFamily;
     TShekelProblemFamily shekelFamily;
@@ -260,7 +262,8 @@ int main() {
     }
     dataFile.close();
     std::cout << "Полный путь к файлу данных: " << std::filesystem::absolute("plot_data.txt").string() << std::endl;
-    int result = system("python plot_graph.py");
+    string command = "python ../../plot_graph.py";
+    int result = system(command.c_str());
     if (result != 0) {
        cerr << "Ошибка при запуске Python скрипта! Код ошибки: " << result << endl;
        return 1;
