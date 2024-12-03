@@ -47,17 +47,16 @@ private:
     double r;
     const T& function;
     ofstream logFile;
-    int exitMainHillCount;
-    int exitMainShekelCount;
-    int exitTestHillCount;
-    int exitTestShekelCount;
+    int exitMainCount;
+    int exitTestCount;
 
     vector<Point> points;
 
 public:
     Minimizer(vector<double> a, vector<double> b, double eps, double r, const T& func)
         : leftBound(a), rightBound(b), epsilon(eps), r(r), function(func),
-        exitMainHillCount(0), exitMainShekelCount(0), exitTestHillCount(0), exitTestShekelCount(0)
+        exitMainCount(0), exitTestCount(0)
+        //exitMainHillCount(0), exitMainShekelCount(0), exitTestHillCount(0), exitTestShekelCount(0)
     {
         logFile.open("minimization_log.txt");
         if (!logFile.is_open()) {
@@ -187,16 +186,28 @@ private:
 
 int main() {
     setlocale(LC_ALL, "Russian");
-    // Создаем генератор случайных чисел
+    
+    int exitMainHillCount = 0;
+    int exitMainShekelCount = 0;
+    int exitTestHillCount = 0;
+    int exitTestShekelCount = 0;
+    double epsilon = 0.0, r = 0.0;
+    std::cout << "Введите точность(> 0)" << endl;
+    std::cin >> epsilon;
+    std::cout << "Введите r(2 < r < 4)" << endl;
+    std::cin >> r;
+    
+    // Количество случайных функций для тестирования
+    int numTests = 1000;
+    std::cout << "Введите количество случайных функций для тестирования" << endl;
+    std::cin >> numTests;
+
     random_device rd;
     mt19937 gen(rd());
     uniform_int_distribution<> hillDist(0, NUM_HILL_PROBLEMS - 1);
     uniform_int_distribution<> shekelDist(0, NUM_SHEKEL_PROBLEMS - 1);
     uniform_real_distribution<> pointDist(0.0, 10.0); // Диапазон для аргумента функций
     MyFunction func;
-
-    // Количество случайных функций для тестирования
-    int numTests = 1000;
 
     THillProblemFamily hillFamily;
     TShekelProblemFamily shekelFamily;
@@ -217,7 +228,7 @@ int main() {
 
         vector<double> hillLeft = { 0.0 };
         vector<double> hillRight = { 1.0 };
-        Minimizer<THillProblem> hillMinimizer(hillLeft, hillRight, 1e-3, 2.0, *hill);
+        Minimizer<THillProblem> hillMinimizer(hillLeft, hillRight, epsilon, r , *hill);
         
         auto startTime = chrono::high_resolution_clock::now();
         vector<double> calculatedMinPointHill = hillMinimizer.findMinimum();
@@ -228,8 +239,8 @@ int main() {
         cout << "Посчитанный минимум: " << hill->ComputeFunction(calculatedMinPointHill) << " в точке x = " << calculatedMinPointHill[0] << endl;
         cout << "Количество итераций: " << hillMinimizer.GetIterationCount() << endl;
         cout << "Время выполнения: " << durationHill.count() * 1000 << " мс" << endl;
-        cout << "Выходов по условию 1 (точность): " << hillMinimizer.GetExitMainCount() << endl;
-        cout << "Выходов по условию 2 (близость к минимуму): " << hillMinimizer.GetExitTestCount() << endl;
+        exitMainHillCount += hillMinimizer.GetExitMainCount();
+        exitTestHillCount += hillMinimizer.GetExitTestCount();
         dataFile << i + 1 << " " << hillMinimizer.GetIterationCount() << endl;
 
         int shekelIndex = shekelDist(gen);
@@ -245,7 +256,7 @@ int main() {
 
         vector<double> shekelLeft = { 0.0 };
         vector<double> shekelRight = { 10.0 };
-        Minimizer<TShekelProblem> shekelMinimizer(shekelLeft, shekelRight, 1e-3, 2.0, *shekel);
+        Minimizer<TShekelProblem> shekelMinimizer(shekelLeft, shekelRight, epsilon, r, *shekel);
 
         startTime = chrono::high_resolution_clock::now();
         vector<double> calculatedMinPointShekel = shekelMinimizer.findMinimum();
@@ -255,12 +266,21 @@ int main() {
         cout << "Посчитанный минимум: " << shekel->ComputeFunction(calculatedMinPointShekel) << " в точке x = " << calculatedMinPointShekel[0] << endl;
         cout << "Количество итераций: " << shekelMinimizer.GetIterationCount() << endl;
         cout << "Время выполнения: " << durationShekel.count() * 1000 << " мс" << endl;
-        cout << "Выходов по условию 1 (точность): " << shekelMinimizer.GetExitMainCount() << endl;
-        cout << "Выходов по условию 2 (близость к минимуму): " << shekelMinimizer.GetExitTestCount() << endl;
+        exitMainShekelCount += shekelMinimizer.GetExitMainCount();
+        exitTestShekelCount += shekelMinimizer.GetExitTestCount();
         dataFile << i + 1 << " " << shekelMinimizer.GetIterationCount() << endl;
         cout << "--------------------" << endl;
     }
+    ofstream statsFile("stats.txt");
+    if (!statsFile.is_open()) {
+        cerr << "Ошибка открытия stats.txt" << endl;
+        return 1;
+    }
     dataFile.close();
+    statsFile << exitMainHillCount << " " << exitMainShekelCount << " " <<
+    exitTestHillCount << " " << exitTestShekelCount << endl;
+    statsFile << epsilon << " " << r << " " << numTests << endl;
+    statsFile.close();
     std::cout << "Полный путь к файлу данных: " << std::filesystem::absolute("plot_data.txt").string() << std::endl;
     string command = "python ../../plot_graph.py";
     int result = system(command.c_str());
