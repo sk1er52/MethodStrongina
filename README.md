@@ -29,4 +29,6 @@
    mkdir build  # Создаем директорию build
    cd build
    cmake ..   #  Генерируем make-файлы (или другие файлы сборки)
-   cmake --build . # Собираем проект
+   cmake --build . --config RELEASE # Собираем проект
+   cd .\RELEASE\   
+   .\OptimizationProject.exe
