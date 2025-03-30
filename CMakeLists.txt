@@ -12,6 +12,8 @@ set(SOURCE_FILES
     MethodStrongina/Source.cpp # Замените на имя вашего исходного файла
     Hill/HillProblem.cpp       # Предполагается, что вы создадите этот файл
     Shekel/ShekelProblem.cpp    # Предполагается, что вы создадите этот файл
+    Grishagin/GrishaginOption.cpp
+    Grishagin/grishagin_function.cpp
     src/IOptProblem.cpp
     src/IOptProblemFamily.cpp
     src/IGeneralOptProblem.cpp
@@ -31,7 +33,7 @@ endif()
 
 # Добавьте каталоги include (если необходимо) - если ваши .hpp файлы находятся
 # в отдельном каталоге, раскомментируйте следующую строку и укажите путь
-target_include_directories(OptimizationProject PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/Hill" "${CMAKE_CURRENT_SOURCE_DIR}/Shekel" "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_include_directories(OptimizationProject PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/Hill" "${CMAKE_CURRENT_SOURCE_DIR}/Shekel" "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_SOURCE_DIR}/Grishagin")
 
 # (Опционально) создайте библиотеку, если вы хотите использовать функции Хилла и Шекеля
 # в других проектах
