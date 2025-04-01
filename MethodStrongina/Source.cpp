@@ -1,5 +1,4 @@
-﻿// source.cpp
-#include <cmath>
+﻿#include <cmath>
 #include <vector>
 #include <limits>
 #include <fstream>
@@ -11,7 +10,6 @@
 #include <string>
 #include <filesystem>
 
-// Подключите ваши заголовочные файлы с задачами:
 #include "HillProblem.hpp"
 #include "ShekelProblem.hpp"
 #include "HillProblemFamily.hpp"
@@ -23,11 +21,11 @@ using namespace std;
 
 // Структура для представления точки минимизации
 struct Point {
-    vector<double> x; // одномерное представление параметра (при использовании отображения, x ∈ [0,1])
-    double y;         // значение целевой функции в данной точке
+    vector<double> x;
+    double y;
 };
 
-// Интерфейс для целевой функции (если вам он нужен для унификации)
+// Интерфейс для целевой функции
 class FunctionInterface {
 public:
     // Вычисляет значение функции в точке x
@@ -38,9 +36,8 @@ public:
 };
 
 //
-// Реализация кривой Пеано (ваша версия)
+// Реализация кривой Пеано
 // Здесь приведён ваш код функции mapd и вспомогательной функции node.
-// (Обратите внимание – глобальные переменные и массивы используются, как в вашем коде.)
 //
 int n1, nexp, l, iq, iu[10], iv[10];
 void mapd( double x, int m, double* y, int n, int key )
@@ -165,23 +162,37 @@ void node ( int is )
     }
 }
 
-// Обёртка вокруг кривой Пеано: принимает одномерное значение x и возвращает вектор размерности n.
+
+// Функция для сброса глобальных переменных, используемых в mapd
+void resetMappingGlobals(int n) {
+    n1 = 0;
+    nexp = 1;
+    l = 0;
+    iq = 0;
+    for (int i = 0; i < 10; ++i) {
+        iu[i] = 0;
+        iv[i] = 0;
+    }
+}
+
+// Обёртка вокруг кривой Пеано: принимает одномерное значение t и возвращает вектор размерности n.
 vector<double> peanoMapping(double x, int m, int n, int key) {
+    resetMappingGlobals(n);
     vector<double> y(n, 0.0);
     mapd(x, m, y.data(), n, key);
     return y;
 }
 
+
 //
 // Класс минимизатора по методу Стронгина.
 // Шаблонный параметр T – тип задачи (например, THillProblem, TShekelProblem, TGrishaginProblem).
-// Предполагается, что у классов задач есть методы ComputeFunction(vector<double>),
-// GetOptimumPoint(), GetOptimumValue(), GetDimension(), GetConstraintsNumber() (если есть ограничения) и т.д.
+// Для одномерных задач используется прямое вычисление, для многомерных – применяется отображение (редукция).
 //
 template <typename T>
 class Minimizer {
 private:
-    vector<double> leftBound;   // Границы для одномерного параметра x ∈ [leftBound[0], rightBound[0]]
+    vector<double> leftBound;
     vector<double> rightBound;
     int iterationCount;
     double epsilon;
@@ -190,12 +201,12 @@ private:
     ofstream logFile;
     int exitMainCount;
     int exitTestCount;
-    vector<Point> points;       // Точки, где вычислялась функция (одномерное представление)
+    vector<Point> points;
 
-    // Параметры для режима отображения (многомерная задача)
-    bool useMapping;   // если true, то решаем многомерную задачу посредством отображения
-    int mappingOrder;  // порядок (m) отображения
-    int dimension;     // размерность исходной задачи (например, 2 для Гришагина)
+    // Флаг использования отображения (многомерная задача)
+    bool useMapping;
+    int mappingOrder;  // порядок отображения (m)
+    int dimension;     // размерность исходной задачи
     int mappingKey;    // ключ для функции mapd
 
 public:
@@ -227,7 +238,7 @@ public:
         if (!logFile.is_open()) {
             cerr << "Ошибка открытия файла журнала!" << endl;
         }
-        // Здесь leftBound и rightBound задаются для параметра x ∈ [0,1]
+        // Для отображения границы задаются для параметра x ∈ [0,1]
         vector<double> initPoint = { leftBound[0] };
         points.push_back({ initPoint, calculateY(leftBound[0]) });
         initPoint = { rightBound[0] };
@@ -241,7 +252,7 @@ public:
         logFile.close();
     }
 
-    // Вычисление значения функции в точке x (одномерное значение)
+    // Вычисление значения функции в точке x
     double calculateY(double x) const {
         if (!useMapping) {
             vector<double> pt = { x };
@@ -297,17 +308,23 @@ public:
 
             logFile << "Итерация " << iteration + 1 << ": ";
             logPoint(points[maxCharacteristicIndex + 1]);
-
+            
+            double threshold = epsilon * 2.0 * pow(intervalSize, alpha);
+            //cout<<"alpha " << alpha << endl;
+            if (!useMapping) {
+                if (abs(xNew[0] - actualMinPoint[0]) <= threshold) {
+                    exitTestCount++;
+                    break;
+                }
+            } else {
+                
             // Условие останова с учетом Гёльдера
-            double currentInterval = abs(points[maxCharacteristicIndex + 1].x[0] - points[maxCharacteristicIndex].x[0]);
-            double threshold = pow(epsilon * intervalSize / 2.0, 1.0 / alpha);
-            if (currentInterval <= threshold) {
-                exitMainCount++;
-                break;
-            }
-            if (abs(xNew[0] - actualMinPoint[0]) <= threshold) {
-                exitTestCount++;
-                break;
+                double currentInterval = abs(points[maxCharacteristicIndex + 1].x[0] - points[maxCharacteristicIndex].x[0]);
+                threshold *= sqrt(5);
+                if (currentInterval <= threshold) {
+                    exitMainCount++;
+                    break;
+                }
             }
 
             ++iteration;
@@ -324,7 +341,7 @@ public:
         }
         iterationCount = iteration;
         if (useMapping)
-            // Возвращаем найденное одномерное значение, преобразованное в многомерное через peanoMapping
+            // Преобразуем найденное одномерное значение обратно в точку в ℝⁿ
             return peanoMapping(points[minIndex].x[0], mappingOrder, dimension, mappingKey);
         else
             return points[minIndex].x;
@@ -378,7 +395,7 @@ int main() {
     cout << "Ваш выбор: ";
     cin >> taskType;
     
-    cout << "Введите количество случайных функций для тестирования: ";
+    cout << "Введите количество функций для тестирования: ";
     cin >> numTests;
     
     cout << "Введите точность (> 0): ";
@@ -403,8 +420,6 @@ int main() {
     
     if (taskType == 1) {
         // Одномерные задачи: случайным образом выбираем либо задачу Хилла, либо Шекеля.
-        // Предполагается, что у вас есть константы NUM_HILL_PROBLEMS и NUM_SHEKEL_PROBLEMS,
-        // а также классы THillProblemFamily и TShekelProblemFamily.
         int subChoice;
         cout << "Выберите задачу:" << endl;
         cout << " 1 - Функция Хилла" << endl;
@@ -412,7 +427,6 @@ int main() {
         cout << "Ваш выбор: ";
         cin >> subChoice;
         
-        // Создаём семейство задач (предполагается, что соответствующий класс имеет метод GetFamilySize() и оператор [])
         THillProblemFamily hillFamily;
         TShekelProblemFamily shekelFamily;
         uniform_int_distribution<> hillDist(0, hillFamily.GetFamilySize() - 1);
@@ -472,8 +486,7 @@ int main() {
         TGrishaginProblemFamily grishFamily;
         uniform_int_distribution<> grishDist(0, grishFamily.GetFamilySize() - 1);
         for (int i = 0; i < numTests; ++i) {
-            int index = grishDist(gen);
-            // Предполагается, что класс GrishaginProblem имеет методы GetOptimumPoint, GetOptimumValue и ComputeFunction
+            int index = i + 1;//grishDist(gen);
             auto grishProblem = grishFamily[index];
             double actualMin = grishProblem->GetOptimumValue();
             vector<double> actualMinPoint = grishProblem->GetOptimumPoint();
@@ -483,7 +496,7 @@ int main() {
             // Для многомерной задачи задаём, что x ∈ [0,1] будет отображаться в ℝ², параметры отображения: order=3, dimension=2, key=1.
             vector<double> a = {0.0};
             vector<double> b = {1.0};
-            Minimizer<decltype(*grishProblem)> minimizer(a, b, epsilon, r, *grishProblem, 3, 2, 1);
+            Minimizer<decltype(*grishProblem)> minimizer(a, b, epsilon, r, *grishProblem, 10000000, 2, 1);
             auto startTime = chrono::high_resolution_clock::now();
             vector<double> computedMin = minimizer.findMinimum();
             auto endTime = chrono::high_resolution_clock::now();
