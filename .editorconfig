@@ -1,0 +1,20 @@
+# https://editorconfig.org
+root = true
+
+[*]
+indent_style = space
+indent_size = 4
+end_of_line = lf # или crlf, если вы работаете в основном на Windows и с Windows-инструментами
+charset = utf-8    # Важно! UTF-8 без BOM
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+[*.{h,hpp,c,cpp,cs,java,py,js,ts,json,xml,md}] # Примеры расширений, можно добавить свои
+charset = utf-8    # Убеждаемся, что для исходников используется UTF-8 без BOM
+
+# Для CMake файлов, если нужно (обычно они тоже в UTF-8)
+[CMakeLists.txt]
+charset = utf-8
+
+[*.cmake]
+charset = utf-8

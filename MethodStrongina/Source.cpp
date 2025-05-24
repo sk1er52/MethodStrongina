@@ -1,479 +1,117 @@
-﻿#include <cmath>
+﻿#include <iostream> // For cout, cin
 #include <vector>
-#include <limits>
-#include <fstream>
-#include <chrono>
-#include <iostream>
-#include <random>
-#include <algorithm>
-#include <cstdlib>
 #include <string>
-#include <filesystem>
+#include <chrono>
+#include <random>
+#include <cstdlib>     // For system()
+#include <filesystem>  // If used directly in main, else can be removed if not.
+                       // Not directly used in the provided main, but kept for potential future use.
 
+#include "minimizer.h" // Our new header
+
+// Problem specific headers
 #include "HillProblem.hpp"
 #include "ShekelProblem.hpp"
 #include "HillProblemFamily.hpp"
 #include "ShekelProblemFamily.hpp"
-#include "grishagin_function.hpp"
+#include "grishagin_function.hpp" // Assuming this defines TGrishaginProblem or similar
 #include "GrishaginProblemFamily.hpp"
 
-using namespace std;
+// using namespace std; // Already in minimizer.h, so available here
 
-// Структура для представления точки минимизации
-struct Point {
-    vector<double> x;
-    double y;
-};
-
-// Интерфейс для целевой функции
-class FunctionInterface {
-public:
-    // Вычисляет значение функции в точке x
-    virtual double ComputeFunction(const vector<double>& x) const = 0;
-    // Возвращает известную точку оптимума
-    virtual vector<double> GetOptimumPoint() const = 0;
-    virtual ~FunctionInterface() {}
-};
-
-//
-// Реализация кривой Пеано
-// Здесь приведён ваш код функции mapd и вспомогательной функции node.
-//
-int n1, nexp, l, iq, iu[10], iv[10];
-void mapd( double x, int m, double* y, int n, int key )
-{
-    /* mapping y(x) : 1 - center, 2 - line, 3 - node */
-    double d, mne, dd, dr;
-    float p, r;
-    int iw[11];
-    int it, is, i, j, k;
-    void node ( int );
-
-    p = 0.0;
-    n1 = n - 1;
-    for ( nexp = 1, i = 0; i < n; nexp *= 2, i++ );
-    d = x;
-    r = 0.5;
-    it = 0;
-    dr = nexp;
-    for ( mne = 1, i = 0; i < m; mne *= dr, i++ );
-    for ( i = 0; i < n; i++ ) {
-        iw[i] = 1; y[i] = 0.0;
-    }
-    if ( key == 2 ) {
-        d = d * (1.0 - 1.0 / mne); k = 0;
-    } else if ( key > 2 ) {
-        dr = mne / nexp;
-        dr = dr - fmod(dr, 1.0);
-        dd = mne - dr;
-        dr = d * dd;
-        dd = dr - fmod(dr, 1.0);
-        dr = dd + (dd - 1) / (nexp - 1);
-        dd = dr - fmod(dr, 1.0);
-        d = dd * (1.0 / mne);
-    }
-    for ( j = 0; j < m; j++ ) {
-        iq = 0;
-        if ( x == 1.0 ) {
-            is = nexp - 1; d = 0.0;
-        } else {
-            d = d * nexp;
-            is = d;
-            d = d - is;
-        }
-        i = is;
-        node(i);
-        i = iu[0];
-        iu[0] = iu[it];
-        iu[it] = i;
-        i = iv[0];
-        iv[0] = iv[it];
-        iv[it] = i;
-        if ( l == 0 )
-            l = it;
-        else if ( l == it )
-            l = 0;
-        if ( (iq > 0) || ((iq == 0) && (is == 0)) )
-            k = l;
-        else if ( iq < 0 )
-            k = ( it == n1 ) ? 0 : n1;
-        r = r * 0.5;
-        it = l;
-        for ( i = 0; i < n; i++ ) {
-            iu[i] = iu[i] * iw[i];
-            iw[i] = -iv[i] * iw[i];
-            p = r * iu[i];
-            p = p + y[i];
-            y[i] = p;
-        }
-    }
-    if ( key == 2 ) {
-        if ( is == (nexp - 1) ) i = -1;
-        else i = 1;
-        p = 2 * i * iu[k] * r * d;
-        p = y[k] - p;
-        y[k] = p;
-    } else if ( key == 3 ) {
-        for ( i = 0; i < n; i++ ) {
-            p = r * iu[i];
-            p = p + y[i];
-            y[i] = p;
-        }
-    }
-}
-void node ( int is )
-{
-    /* calculate iu, iv, l by is */
-    int n, i, j, k1, k2, iff;
-    n = n1 + 1;
-    if ( is == 0 ) {
-        l = n1;
-        for ( i = 0; i < n; i++ ) {
-            iu[i] = -1; iv[i] = -1;
-        }
-    } else if ( is == (nexp - 1) ) {
-        l = n1;
-        iu[0] = 1;
-        iv[0] = 1;
-        for ( i = 1; i < n; i++ ) {
-            iu[i] = -1; iv[i] = -1;
-        }
-        iv[n1] = 1;
-    } else {
-        iff = nexp;
-        k1 = -1;
-        for ( i = 0; i < n; i++ ) {
-            iff = iff / 2;
-            if ( is >= iff ) {
-                if ( (is == iff) && (is != 1) ) { l = i; iq = -1; }
-                is = is - iff;
-                k2 = 1;
-            } else {
-                k2 = -1;
-                if ( (is == (iff - 1)) && (is != 0) ) { l = i; iq = 1; }
-            }
-            j = -k1 * k2;
-            iv[i] = j;
-            iu[i] = j;
-            k1 = k2;
-        }
-        iv[l] = iv[l] * iq;
-        iv[n1] = -iv[n1];
-    }
-}
-
-
-// Функция для сброса глобальных переменных, используемых в mapd
-void resetMappingGlobals(int n) {
-    n1 = 0;
-    nexp = 1;
-    l = 0;
-    iq = 0;
-    for (int i = 0; i < 10; ++i) {
-        iu[i] = 0;
-        iv[i] = 0;
-    }
-}
-
-// Обёртка вокруг кривой Пеано: принимает одномерное значение t и возвращает вектор размерности n.
-vector<double> peanoMapping(double x, int m, int n, int key) {
-    resetMappingGlobals(n);
-    vector<double> y(n, 0.0);
-    mapd(x, m, y.data(), n, key);
-    return y;
-}
-
-
-//
-// Класс минимизатора по методу Стронгина.
-// Шаблонный параметр T – тип задачи (например, THillProblem, TShekelProblem, TGrishaginProblem).
-// Для одномерных задач используется прямое вычисление, для многомерных – применяется отображение (редукция).
-//
-template <typename T>
-class Minimizer {
-private:
-    vector<double> leftBound;
-    vector<double> rightBound;
-    int iterationCount;
-    double epsilon;
-    double r;
-    const T& function;
-    ofstream logFile;
-    int exitMainCount;
-    int exitTestCount;
-    vector<Point> points;
-
-    // Флаг использования отображения (многомерная задача)
-    bool useMapping;
-    int mappingOrder;  // порядок отображения (m)
-    int dimension;     // размерность исходной задачи
-    int mappingKey;    // ключ для функции mapd
-
-public:
-    // Конструктор для одномерного случая (без отображения)
-    Minimizer(vector<double> a, vector<double> b, double eps, double r, const T& func)
-        : leftBound(a), rightBound(b), epsilon(eps), r(r), function(func),
-          exitMainCount(0), exitTestCount(0), useMapping(false)
-    {
-        logFile.open("minimization_log.txt", ios::out);
-        if (!logFile.is_open()) {
-            cerr << "Ошибка открытия файла журнала!" << endl;
-        }
-        // Инициализируем точки
-        points.push_back({ leftBound, function.ComputeFunction(leftBound) });
-        points.push_back({ rightBound, function.ComputeFunction(rightBound) });
-        logFile << "Начальные точки:\n";
-        logPoint(points[0]);
-        logPoint(points[1]);
-    }
-
-    // Конструктор для многомерного случая (с отображением)
-    Minimizer(vector<double> a, vector<double> b, double eps, double r, const T& func,
-              int mappingOrder_, int dimension_, int mappingKey_)
-        : leftBound(a), rightBound(b), epsilon(eps), r(r), function(func),
-          exitMainCount(0), exitTestCount(0),
-          useMapping(true), mappingOrder(mappingOrder_), dimension(dimension_), mappingKey(mappingKey_)
-    {
-        logFile.open("minimization_log.txt", ios::out);
-        if (!logFile.is_open()) {
-            cerr << "Ошибка открытия файла журнала!" << endl;
-        }
-        // Для отображения границы задаются для параметра x ∈ [0,1]
-        vector<double> initPoint = { leftBound[0] };
-        points.push_back({ initPoint, calculateY(leftBound[0]) });
-        initPoint = { rightBound[0] };
-        points.push_back({ initPoint, calculateY(rightBound[0]) });
-        logFile << "Начальные точки (одномерные для отображения):\n";
-        logPoint(points[0]);
-        logPoint(points[1]);
-    }
-
-    ~Minimizer() {
-        logFile.close();
-    }
-
-    // Вычисление значения функции в точке x
-    double calculateY(double x) const {
-        if (!useMapping) {
-            vector<double> pt = { x };
-            return function.ComputeFunction(pt);
-        } else {
-            // Преобразуем x через кривую Пеано в точку в ℝⁿ
-            vector<double> mappedPoint = peanoMapping(x, mappingOrder, dimension, mappingKey);
-            return function.ComputeFunction(mappedPoint);
-        }
-    }
-
-    // Метод поиска минимума
-    vector<double> findMinimum() { 
-        iterationCount = 0;
-        const int maxIterations = 10000;
-        int iteration = 0;
-        double M, mVal, yNew;
-        vector<double> xNew(leftBound.size());
-        double intervalSize = abs(rightBound[0] - leftBound[0]);
-        
-        // Для многомерного случая условие Гёльдера: alpha = 1/dimension, иначе alpha = 1.
-        double alpha = useMapping ? (1.0 / double(dimension)) : 1.0;
-        
-        // Получаем фактическую точку оптимума (из файла или аналитически)
-        vector<double> actualMinPoint = function.GetOptimumPoint();
-
-        while (iteration < maxIterations) {
-            M = calculateMaxSlope();
-            mVal = (M > 0.0) ? r * M : 1.0;
-
-            vector<double> intervalCharacteristics(points.size() - 1);
-            for (size_t i = 0; i < points.size() - 1; ++i) {
-                intervalCharacteristics[i] = calculateCharacteristic(i, mVal);
-            }
-
-            size_t maxCharacteristicIndex =
-                distance(intervalCharacteristics.begin(),
-                         max_element(intervalCharacteristics.begin(), intervalCharacteristics.end()));
-
-            // Вычисляем новую точку как одномерное значение
-            double x_left = points[maxCharacteristicIndex].x[0];
-            double x_right = points[maxCharacteristicIndex + 1].x[0];
-            xNew[0] = 0.5 * (x_left + x_right) - (points[maxCharacteristicIndex + 1].y - points[maxCharacteristicIndex].y) / (2.0 * mVal);
-
-            // Ограничиваем xNew границами
-            if (xNew[0] < leftBound[0])
-                xNew[0] = leftBound[0];
-            if (xNew[0] > rightBound[0])
-                xNew[0] = rightBound[0];
-
-            yNew = calculateY(xNew[0]);
-            points.insert(points.begin() + maxCharacteristicIndex + 1, { xNew, yNew });
-
-            logFile << "Итерация " << iteration + 1 << ": ";
-            logPoint(points[maxCharacteristicIndex + 1]);
-            
-            double threshold = epsilon * 2.0 * pow(intervalSize, alpha);
-            //cout<<"alpha " << alpha << endl;
-            if (!useMapping) {
-                if (abs(xNew[0] - actualMinPoint[0]) <= threshold) {
-                    exitTestCount++;
-                    break;
-                }
-            } else {
-                
-            // Условие останова с учетом Гёльдера
-                double currentInterval = abs(points[maxCharacteristicIndex + 1].x[0] - points[maxCharacteristicIndex].x[0]);
-                threshold *= sqrt(5);
-                if (currentInterval <= threshold) {
-                    exitMainCount++;
-                    break;
-                }
-            }
-
-            ++iteration;
-        }
-
-        // Находим точку с минимальным значением
-        size_t minIndex = 0;
-        double minY = points[0].y;
-        for (size_t i = 1; i < points.size(); ++i) {
-            if (points[i].y < minY) {
-                minY = points[i].y;
-                minIndex = i;
-            }
-        }
-        iterationCount = iteration;
-        if (useMapping)
-            // Преобразуем найденное одномерное значение обратно в точку в ℝⁿ
-            return peanoMapping(points[minIndex].x[0], mappingOrder, dimension, mappingKey);
-        else
-            return points[minIndex].x;
-    }
-    
-    int GetIterationCount() const { return iterationCount; }
-    int GetExitMainCount() const { return exitMainCount; }
-    int GetExitTestCount() const { return exitTestCount; }
-
-private:
-    double calculateMaxSlope() const {
-        double maxSlope = 0.0;
-        for (size_t i = 1; i < points.size(); ++i) {
-            double diffX = abs(points[i].x[0] - points[i - 1].x[0]);
-            if (diffX > 1e-9) {
-                double slope = abs((points[i].y - points[i - 1].y) / diffX);
-                maxSlope = max(maxSlope, slope);
-            }
-        }
-        return maxSlope;
-    }
-
-    double calculateCharacteristic(size_t index, double mVal) const {
-        double interval = points[index + 1].x[0] - points[index].x[0];
-        return mVal * interval + pow(points[index + 1].y - points[index].y, 2) / (mVal * interval)
-               - 2.0 * (points[index + 1].y + points[index].y);
-    }
-
-    void logPoint(const Point& point) {
-        logFile << "x: ";
-        for (double val : point.x) {
-            logFile << val << " ";
-        }
-        logFile << ", y: " << point.y << endl;
-    }
-};
-
-//
-// MAIN
-//
 int main() {
-    setlocale(LC_ALL, "Russian");
-    
+    setlocale(LC_ALL, "Rus");
+
     int taskType;
     int numTests;
-    double epsilon, r;
-    
+    double epsilon_val, r_val; // Renamed to avoid conflict with Minimizer's internal 'r'
+
     cout << "Выберите тип задачи:" << endl;
     cout << " 1 - Одномерная (Хилл/Шекеля)" << endl;
     cout << " 2 - Многомерная (Гришагина)" << endl;
     cout << "Ваш выбор: ";
     cin >> taskType;
-    
+
     cout << "Введите количество функций для тестирования: ";
     cin >> numTests;
-    
+
     cout << "Введите точность (> 0): ";
-    cin >> epsilon;
+    cin >> epsilon_val;
     cout << "Введите параметр r (например, 2.5): ";
-    cin >> r;
-    
-    // Файл для записи данных для построения графика
+    cin >> r_val;
+
+    // File for plotting data
     ofstream dataFile("plot_data.txt", ios::out);
     if (!dataFile.is_open()) {
         cerr << "Ошибка открытия файла plot_data.txt!" << endl;
         return 1;
     }
-    
-    // Счетчики для статистики
+
+    // Counters for statistics
     int exitMainTotal = 0;
     int exitTestTotal = 0;
     double totalIterations = 0.0;
-    
+
     random_device rd;
     mt19937 gen(rd());
-    
+
     if (taskType == 1) {
-        // Одномерные задачи: случайным образом выбираем либо задачу Хилла, либо Шекеля.
         int subChoice;
         cout << "Выберите задачу:" << endl;
         cout << " 1 - Функция Хилла" << endl;
         cout << " 2 - Функция Шекеля" << endl;
         cout << "Ваш выбор: ";
         cin >> subChoice;
-        
+
         THillProblemFamily hillFamily;
         TShekelProblemFamily shekelFamily;
         uniform_int_distribution<> hillDist(0, hillFamily.GetFamilySize() - 1);
         uniform_int_distribution<> shekelDist(0, shekelFamily.GetFamilySize() - 1);
-        
+
         for (int i = 0; i < numTests; ++i) {
-            if (subChoice == 1) { // Хилл
+            if (subChoice == 1) { // Hill
                 int index = hillDist(gen);
                 THillProblem* hill = dynamic_cast<THillProblem*>(hillFamily[index]);
+                if (!hill) { cerr << "Ошибка: hill problem is null" << endl; continue; }
                 double actualMin = hill->GetOptimumValue();
                 vector<double> actualMinPoint = hill->GetOptimumPoint();
                 cout << "\nHill Problem " << index << endl;
-                cout << "Фактический минимум (из файла): " << actualMin 
-                     << " в точке x = " << actualMinPoint[0] << endl;
+                cout << "Фактический минимум (из файла): " << actualMin
+                     << " в точке x = " << (actualMinPoint.empty() ? NAN : actualMinPoint[0]) << endl;
                 vector<double> a = {0.0};
                 vector<double> b = {1.0};
-                Minimizer<THillProblem> minimizer(a, b, epsilon, r, *hill);
+                Minimizer<THillProblem> minimizer(a, b, epsilon_val, r_val, *hill);
                 auto startTime = chrono::high_resolution_clock::now();
-                vector<double> computedMin = minimizer.findMinimum();
+                vector<double> computedMinPoint = minimizer.findMinimum();
                 auto endTime = chrono::high_resolution_clock::now();
                 chrono::duration<double> duration = endTime - startTime;
-                cout << "Посчитанный минимум: " << hill->ComputeFunction(computedMin)
-                     << " в точке x = " << computedMin[0] << endl;
-                cout << "Итераций: " << minimizer.GetIterationCount() << ", время: " 
+                cout << "Посчитанный минимум: " << hill->ComputeFunction(computedMinPoint)
+                     << " в точке x = " << (computedMinPoint.empty() ? NAN : computedMinPoint[0]) << endl;
+                cout << "Итераций: " << minimizer.GetIterationCount() << ", время: "
                      << duration.count() * 1000 << " мс" << endl;
                 totalIterations += minimizer.GetIterationCount();
                 exitMainTotal += minimizer.GetExitMainCount();
                 exitTestTotal += minimizer.GetExitTestCount();
                 dataFile << i + 1 << " " << minimizer.GetIterationCount() << endl;
-            } else { // Шекеля
+            } else { // Shekel
                 int index = shekelDist(gen);
                 TShekelProblem* shekel = dynamic_cast<TShekelProblem*>(shekelFamily[index]);
+                 if (!shekel) { cerr << "Ошибка: shekel problem is null" << endl; continue; }
                 double actualMin = shekel->GetOptimumValue();
                 vector<double> actualMinPoint = shekel->GetOptimumPoint();
                 cout << "\nShekel Problem " << index << endl;
-                cout << "Фактический минимум (из файла): " << actualMin 
-                     << " в точке x = " << actualMinPoint[0] << endl;
+                cout << "Фактический минимум (из файла): " << actualMin
+                     << " в точке x = " << (actualMinPoint.empty() ? NAN : actualMinPoint[0]) << endl;
                 vector<double> a = {0.0};
                 vector<double> b = {10.0};
-                Minimizer<TShekelProblem> minimizer(a, b, epsilon, r, *shekel);
+                Minimizer<TShekelProblem> minimizer(a, b, epsilon_val, r_val, *shekel);
                 auto startTime = chrono::high_resolution_clock::now();
-                vector<double> computedMin = minimizer.findMinimum();
+                vector<double> computedMinPoint = minimizer.findMinimum();
                 auto endTime = chrono::high_resolution_clock::now();
                 chrono::duration<double> duration = endTime - startTime;
-                cout << "Посчитанный минимум: " << shekel->ComputeFunction(computedMin)
-                     << " в точке x = " << computedMin[0] << endl;
-                cout << "Итераций: " << minimizer.GetIterationCount() << ", время: " 
+                cout << "Посчитанный минимум: " << shekel->ComputeFunction(computedMinPoint)
+                     << " в точке x = " << (computedMinPoint.empty() ? NAN : computedMinPoint[0]) << endl;
+                cout << "Итераций: " << minimizer.GetIterationCount() << ", время: "
                      << duration.count() * 1000 << " мс" << endl;
                 totalIterations += minimizer.GetIterationCount();
                 exitMainTotal += minimizer.GetExitMainCount();
@@ -482,28 +120,58 @@ int main() {
             }
         }
     } else if (taskType == 2) {
-        // Многомерная задача: например, семейство задач Гришагина.
+        // Multidimensional task: e.g., Grishagin problem family.
         TGrishaginProblemFamily grishFamily;
-        uniform_int_distribution<> grishDist(0, grishFamily.GetFamilySize() - 1);
+        // uniform_int_distribution<> grishDist(0, grishFamily.GetFamilySize() - 1); // FamilySize might be 100, indices 1-100
+        
         for (int i = 0; i < numTests; ++i) {
-            int index = i + 1;//grishDist(gen);
-            auto grishProblem = grishFamily[index];
+            // int index = grishDist(gen) + 1; // if family indices are 1-based
+            int index = (i % grishFamily.GetFamilySize()) + 1; // Cycle through problems if numTests > family size
+            if (index > 100) index = 100; // Cap at 100 for Grishagin if that's the max
+            
+            IOptProblem* problemBase = grishFamily[index];
+            if (!problemBase) {
+                 cerr << "Ошибка: grishagin problem " << index << " is null" << endl;
+                 continue;
+            }
+            // Assuming TGrishaginProblem inherits from FunctionInterface or is adaptable
+            // For simplicity, let's assume grishFamily[index] returns a compatible type
+            // If TGrishaginProblem is the concrete type:
+            TGrishaginProblem* grishProblem = dynamic_cast<TGrishaginProblem*>(problemBase);
+            if (!grishProblem) {
+                cerr << "Ошибка: Не удалось привести к TGrishaginProblem для индекса " << index << endl;
+                continue;
+            }
+
             double actualMin = grishProblem->GetOptimumValue();
             vector<double> actualMinPoint = grishProblem->GetOptimumPoint();
             cout << "\nGrishagin Problem " << index << endl;
-            cout << "Фактический минимум (из файла): " << actualMin 
-                 << " в точке (x,y) = (" << actualMinPoint[0] << ", " << actualMinPoint[1] << ")" << endl;
-            // Для многомерной задачи задаём, что x ∈ [0,1] будет отображаться в ℝ², параметры отображения: order=3, dimension=2, key=1.
-            vector<double> a = {0.0};
+            cout << "Фактический минимум (из файла): " << actualMin;
+            if (actualMinPoint.size() >= 2) {
+                 cout << " в точке (x,y) = (" << actualMinPoint[0] << ", " << actualMinPoint[1] << ")" << endl;
+            } else {
+                cout << " (точка оптимума не полностью определена)" << endl;
+            }
+
+            vector<double> a = {0.0}; // Search space for the 1D parameter of Peano curve
             vector<double> b = {1.0};
-            Minimizer<decltype(*grishProblem)> minimizer(a, b, epsilon, r, *grishProblem, 10000000, 2, 1);
+            // The type for Minimizer should be the concrete problem type TGrishaginProblem
+            Minimizer<TGrishaginProblem> minimizer(a, b, epsilon_val, r_val, *grishProblem, 10, 2, 1); // order=10, dim=2, key=1
+            
             auto startTime = chrono::high_resolution_clock::now();
-            vector<double> computedMin = minimizer.findMinimum();
+            vector<double> computedMinPoint = minimizer.findMinimum();
             auto endTime = chrono::high_resolution_clock::now();
             chrono::duration<double> duration = endTime - startTime;
-            cout << "Посчитанный минимум: " << grishProblem->ComputeFunction(computedMin)
-                 << " в точке (x,y) = (" << computedMin[0] << ", " << computedMin[1] << ")" << endl;
-            cout << "Итераций: " << minimizer.GetIterationCount() << ", время: " 
+            
+            cout << "Посчитанный минимум: " << grishProblem->ComputeFunction(computedMinPoint);
+            if (computedMinPoint.size() >= 2) {
+                cout << " в точке (x,y) = (" << computedMinPoint[0] << ", " << computedMinPoint[1] << ")" << endl;
+            } else if (!computedMinPoint.empty()){
+                 cout << " в точке x_param = " << computedMinPoint[0] << " (многомерная точка не полностью определена)" << endl;
+            } else {
+                cout << " (точка не найдена)" << endl;
+            }
+            cout << "Итераций: " << minimizer.GetIterationCount() << ", время: "
                  << duration.count() * 1000 << " мс" << endl;
             totalIterations += minimizer.GetIterationCount();
             exitMainTotal += minimizer.GetExitMainCount();
@@ -512,33 +180,50 @@ int main() {
         }
     } else {
         cout << "Некорректный выбор." << endl;
+        dataFile.close(); // Close file even on error
         return 1;
     }
     dataFile.close();
-    
-    // Запись общей статистики в файл stats.txt
+
+    // Write general statistics to stats.txt
     ofstream statsFile("stats.txt", ios::out);
     if (!statsFile.is_open()) {
         cerr << "Ошибка открытия файла stats.txt!" << endl;
         return 1;
     }
     statsFile << exitMainTotal << " " << exitTestTotal << endl;
-    statsFile << epsilon << " " << r << " " << numTests << endl;
+    statsFile << epsilon_val << " " << r_val << " " << numTests << endl;
     statsFile.close();
-    
+
     cout << "\nОбщая статистика:" << endl;
-    cout << "Среднее число итераций: " << totalIterations / numTests << endl;
+    if (numTests > 0) {
+        cout << "Среднее число итераций: " << totalIterations / numTests << endl;
+    } else {
+        cout << "Среднее число итераций: N/A (0 тестов)" << endl;
+    }
     cout << "Счетчик основного условия: " << exitMainTotal << endl;
     cout << "Счетчик дополнительного условия: " << exitTestTotal << endl;
+
+    // Run Python script for plotting
+    string command = "python ../../plot_graph.py"; // Adjust path if necessary
+    #ifdef _WIN32
+        // No special handling needed for system() on Windows for python usually
+    #else // Linux/macOS
+        // If python is python3 on your system:
+        // command = "python3 ../../plot_graph.py";
+    #endif
     
-    // Запуск Python-скрипта для построения графика
-    string command = "python plot_graph.py";
+    cout << "Запуск скрипта построения графика: " << command << endl;
     int result = system(command.c_str());
     if (result != 0) {
        cerr << "Ошибка при запуске Python скрипта! Код ошибки: " << result << endl;
-       return 1;
+       // Don't return 1 here, as minimization might have been successful.
+       // This is a post-processing step.
     }
-    
-    system("pause");
+
+    cout << "Нажмите Enter для выхода...";
+    cin.ignore(numeric_limits<streamsize>::max(), '\n'); // Clear remaining input
+    cin.get(); // Wait for Enter key
+
     return 0;
 }
