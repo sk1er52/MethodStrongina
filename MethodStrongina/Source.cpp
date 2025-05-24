@@ -1,229 +1,259 @@
-﻿#include <iostream> // For cout, cin
+﻿// main.cpp (или Source.cpp)
+
+#include <iostream>
 #include <vector>
 #include <string>
 #include <chrono>
 #include <random>
-#include <cstdlib>     // For system()
-#include <filesystem>  // If used directly in main, else can be removed if not.
-                       // Not directly used in the provided main, but kept for potential future use.
+#include <cstdlib>     // Для system()
+#include <limits>      // Для numeric_limits
+#include <cmath>       // Для NAN, если используется
 
-#include "minimizer.h" // Our new header
+// Наш главный заголовочный файл с классом Minimizer
+#include "minimizer.h"
 
-// Problem specific headers
+// Заголовочные файлы для конкретных задач
 #include "HillProblem.hpp"
 #include "ShekelProblem.hpp"
 #include "HillProblemFamily.hpp"
 #include "ShekelProblemFamily.hpp"
-#include "grishagin_function.hpp" // Assuming this defines TGrishaginProblem or similar
+#include "grishagin_function.hpp" // Предполагается, что определяет TGrishaginProblem
 #include "GrishaginProblemFamily.hpp"
 
-// using namespace std; // Already in minimizer.h, so available here
+// using namespace std; // Уже есть в minimizer.h и доступно здесь
 
 int main() {
-    setlocale(LC_ALL, "Rus");
+    setlocale(LC_ALL, "Russian");
 
-    int taskType;
-    int numTests;
-    double epsilon_val, r_val; // Renamed to avoid conflict with Minimizer's internal 'r'
+    int taskType_choice;
+    int numTests_val;
+    double epsilon_param, r_param_strongin;
 
-    cout << "Выберите тип задачи:" << endl;
-    cout << " 1 - Одномерная (Хилл/Шекеля)" << endl;
-    cout << " 2 - Многомерная (Гришагина)" << endl;
-    cout << "Ваш выбор: ";
-    cin >> taskType;
+    std::cout << "Выберите тип задачи:" << std::endl;
+    std::cout << " 1 - Одномерная (Хилл/Шекеля)" << std::endl;
+    std::cout << " 2 - Многомерная (Гришагина)" << std::endl;
+    std::cout << "Ваш выбор: ";
+    std::cin >> taskType_choice;
 
-    cout << "Введите количество функций для тестирования: ";
-    cin >> numTests;
+    std::cout << "Введите количество функций для тестирования: ";
+    std::cin >> numTests_val;
 
-    cout << "Введите точность (> 0): ";
-    cin >> epsilon_val;
-    cout << "Введите параметр r (например, 2.5): ";
-    cin >> r_val;
+    std::cout << "Введите точность эпсилон (> 0): ";
+    std::cin >> epsilon_param;
+    std::cout << "Введите параметр r метода Стронгина (например, >1, обычно 2.0-4.0): ";
+    std::cin >> r_param_strongin;
 
-    // File for plotting data
-    ofstream dataFile("plot_data.txt", ios::out);
+    // Файл для записи данных для построения графика
+    std::ofstream dataFile("plot_data.txt", std::ios::out);
     if (!dataFile.is_open()) {
-        cerr << "Ошибка открытия файла plot_data.txt!" << endl;
+        std::cerr << "Ошибка открытия файла plot_data.txt!" << std::endl;
         return 1;
     }
 
-    // Counters for statistics
-    int exitMainTotal = 0;
-    int exitTestTotal = 0;
-    double totalIterations = 0.0;
+    // Счетчики для статистики
+    int totalExitMainCount = 0;
+    int totalExitTestCount = 0;
+    double cumulativeIterations = 0.0;
 
-    random_device rd;
-    mt19937 gen(rd());
+    std::random_device rd;
+    std::mt19937 gen(rd());
 
-    if (taskType == 1) {
+    if (taskType_choice == 1) {
+        // --- Одномерные задачи ---
         int subChoice;
-        cout << "Выберите задачу:" << endl;
-        cout << " 1 - Функция Хилла" << endl;
-        cout << " 2 - Функция Шекеля" << endl;
-        cout << "Ваш выбор: ";
-        cin >> subChoice;
+        std::cout << "Выберите одномерную задачу:" << std::endl;
+        std::cout << " 1 - Функция Хилла" << std::endl;
+        std::cout << " 2 - Функция Шекеля" << std::endl;
+        std::cout << "Ваш выбор: ";
+        std::cin >> subChoice;
 
         THillProblemFamily hillFamily;
         TShekelProblemFamily shekelFamily;
-        uniform_int_distribution<> hillDist(0, hillFamily.GetFamilySize() - 1);
-        uniform_int_distribution<> shekelDist(0, shekelFamily.GetFamilySize() - 1);
+        // Распределения для случайного выбора индекса задачи из семейства
+        std::uniform_int_distribution<> hillDist(0, hillFamily.GetFamilySize() - 1);
+        std::uniform_int_distribution<> shekelDist(0, shekelFamily.GetFamilySize() - 1);
 
-        for (int i = 0; i < numTests; ++i) {
-            if (subChoice == 1) { // Hill
-                int index = hillDist(gen);
-                THillProblem* hill = dynamic_cast<THillProblem*>(hillFamily[index]);
-                if (!hill) { cerr << "Ошибка: hill problem is null" << endl; continue; }
-                double actualMin = hill->GetOptimumValue();
-                vector<double> actualMinPoint = hill->GetOptimumPoint();
-                cout << "\nHill Problem " << index << endl;
-                cout << "Фактический минимум (из файла): " << actualMin
-                     << " в точке x = " << (actualMinPoint.empty() ? NAN : actualMinPoint[0]) << endl;
-                vector<double> a = {0.0};
-                vector<double> b = {1.0};
-                Minimizer<THillProblem> minimizer(a, b, epsilon_val, r_val, *hill);
-                auto startTime = chrono::high_resolution_clock::now();
-                vector<double> computedMinPoint = minimizer.findMinimum();
-                auto endTime = chrono::high_resolution_clock::now();
-                chrono::duration<double> duration = endTime - startTime;
-                cout << "Посчитанный минимум: " << hill->ComputeFunction(computedMinPoint)
-                     << " в точке x = " << (computedMinPoint.empty() ? NAN : computedMinPoint[0]) << endl;
-                cout << "Итераций: " << minimizer.GetIterationCount() << ", время: "
-                     << duration.count() * 1000 << " мс" << endl;
-                totalIterations += minimizer.GetIterationCount();
-                exitMainTotal += minimizer.GetExitMainCount();
-                exitTestTotal += minimizer.GetExitTestCount();
-                dataFile << i + 1 << " " << minimizer.GetIterationCount() << endl;
-            } else { // Shekel
-                int index = shekelDist(gen);
-                TShekelProblem* shekel = dynamic_cast<TShekelProblem*>(shekelFamily[index]);
-                 if (!shekel) { cerr << "Ошибка: shekel problem is null" << endl; continue; }
-                double actualMin = shekel->GetOptimumValue();
-                vector<double> actualMinPoint = shekel->GetOptimumPoint();
-                cout << "\nShekel Problem " << index << endl;
-                cout << "Фактический минимум (из файла): " << actualMin
-                     << " в точке x = " << (actualMinPoint.empty() ? NAN : actualMinPoint[0]) << endl;
-                vector<double> a = {0.0};
-                vector<double> b = {10.0};
-                Minimizer<TShekelProblem> minimizer(a, b, epsilon_val, r_val, *shekel);
-                auto startTime = chrono::high_resolution_clock::now();
-                vector<double> computedMinPoint = minimizer.findMinimum();
-                auto endTime = chrono::high_resolution_clock::now();
-                chrono::duration<double> duration = endTime - startTime;
-                cout << "Посчитанный минимум: " << shekel->ComputeFunction(computedMinPoint)
-                     << " в точке x = " << (computedMinPoint.empty() ? NAN : computedMinPoint[0]) << endl;
-                cout << "Итераций: " << minimizer.GetIterationCount() << ", время: "
-                     << duration.count() * 1000 << " мс" << endl;
-                totalIterations += minimizer.GetIterationCount();
-                exitMainTotal += minimizer.GetExitMainCount();
-                exitTestTotal += minimizer.GetExitTestCount();
-                dataFile << i + 1 << " " << minimizer.GetIterationCount() << endl;
+        for (int i = 0; i < numTests_val; ++i) {
+            if (subChoice == 1) { // Задача Хилла
+                int problem_idx = hillDist(gen);
+                THillProblem* hillProblemInstance = dynamic_cast<THillProblem*>(hillFamily[problem_idx]);
+                if (!hillProblemInstance) {
+                    std::cerr << "Ошибка: не удалось получить экземпляр задачи Хилла " << problem_idx << std::endl;
+                    continue;
+                }
+
+                double actualOptValue = hillProblemInstance->GetOptimumValue();
+                std::vector<double> actualOptPointCoords = hillProblemInstance->GetOptimumPoint();
+
+                std::cout << "\nЗадача Хилла, индекс " << problem_idx << std::endl;
+                std::cout << "Известный оптимум (из файла): " << actualOptValue
+                          << " в точке x = " << (actualOptPointCoords.empty() ? NAN : actualOptPointCoords[0]) << std::endl;
+
+                // Границы для одномерной задачи Хилла (обычно [0,1])
+                std::vector<double> problem_domain_a = {0.0};
+                std::vector<double> problem_domain_b = {1.0};
+
+                Minimizer<THillProblem> minimizer(problem_domain_a, problem_domain_b, epsilon_param, r_param_strongin, *hillProblemInstance);
+
+                auto startTime = std::chrono::high_resolution_clock::now();
+                std::vector<double> computedMinCoords = minimizer.findMinimum();
+                auto endTime = std::chrono::high_resolution_clock::now();
+                std::chrono::duration<double> duration = endTime - startTime;
+
+                double computedOptValue = computedMinCoords.empty() ? NAN : hillProblemInstance->ComputeFunction(computedMinCoords);
+                std::cout << "Найденный минимум: " << computedOptValue
+                          << " в точке x = " << (computedMinCoords.empty() ? NAN : computedMinCoords[0]) << std::endl;
+                std::cout << "Итераций: " << minimizer.GetIterationCount() << ", время: "
+                          << duration.count() * 1000 << " мс" << std::endl;
+
+                cumulativeIterations += minimizer.GetIterationCount();
+                totalExitMainCount += minimizer.GetExitMainCount();
+                totalExitTestCount += minimizer.GetExitTestCount();
+                dataFile << i + 1 << " " << minimizer.GetIterationCount() << std::endl;
+
+            } else { // Задача Шекеля
+                int problem_idx = shekelDist(gen);
+                TShekelProblem* shekelProblemInstance = dynamic_cast<TShekelProblem*>(shekelFamily[problem_idx]);
+                 if (!shekelProblemInstance) {
+                    std::cerr << "Ошибка: не удалось получить экземпляр задачи Шекеля " << problem_idx << std::endl;
+                    continue;
+                 }
+                double actualOptValue = shekelProblemInstance->GetOptimumValue();
+                std::vector<double> actualOptPointCoords = shekelProblemInstance->GetOptimumPoint();
+
+                std::cout << "\nЗадача Шекеля, индекс " << problem_idx << std::endl;
+                std::cout << "Известный оптимум (из файла): " << actualOptValue
+                          << " в точке x = " << (actualOptPointCoords.empty() ? NAN : actualOptPointCoords[0]) << std::endl;
+
+                // Границы для одномерной задачи Шекеля (обычно [0,10])
+                std::vector<double> problem_domain_a = {0.0};
+                std::vector<double> problem_domain_b = {10.0};
+
+                Minimizer<TShekelProblem> minimizer(problem_domain_a, problem_domain_b, epsilon_param, r_param_strongin, *shekelProblemInstance);
+
+                auto startTime = std::chrono::high_resolution_clock::now();
+                std::vector<double> computedMinCoords = minimizer.findMinimum();
+                auto endTime = std::chrono::high_resolution_clock::now();
+                std::chrono::duration<double> duration = endTime - startTime;
+
+                double computedOptValue = computedMinCoords.empty() ? NAN : shekelProblemInstance->ComputeFunction(computedMinCoords);
+                std::cout << "Найденный минимум: " << computedOptValue
+                          << " в точке x = " << (computedMinCoords.empty() ? NAN : computedMinCoords[0]) << std::endl;
+                std::cout << "Итераций: " << minimizer.GetIterationCount() << ", время: "
+                          << duration.count() * 1000 << " мс" << std::endl;
+
+                cumulativeIterations += minimizer.GetIterationCount();
+                totalExitMainCount += minimizer.GetExitMainCount();
+                totalExitTestCount += minimizer.GetExitTestCount();
+                dataFile << i + 1 << " " << minimizer.GetIterationCount() << std::endl;
             }
         }
-    } else if (taskType == 2) {
-        // Multidimensional task: e.g., Grishagin problem family.
-        TGrishaginProblemFamily grishFamily;
-        // uniform_int_distribution<> grishDist(0, grishFamily.GetFamilySize() - 1); // FamilySize might be 100, indices 1-100
-        
-        for (int i = 0; i < numTests; ++i) {
-            // int index = grishDist(gen) + 1; // if family indices are 1-based
-            int index = (i % grishFamily.GetFamilySize()) + 1; // Cycle through problems if numTests > family size
-            if (index > 100) index = 100; // Cap at 100 for Grishagin if that's the max
-            
-            IOptProblem* problemBase = grishFamily[index];
-            if (!problemBase) {
-                 cerr << "Ошибка: grishagin problem " << index << " is null" << endl;
+    } else if (taskType_choice == 2) {
+        // --- Многомерная задача: Гришагина ---
+        TGrishaginProblemFamily grishaginFamily;
+        // Распределение для случайного выбора индекса задачи (если нужно, обычно задачи Гришагина нумеруются 1-100)
+        // std::uniform_int_distribution<> grishaginDist(1, grishaginFamily.GetFamilySize());
+
+        for (int i = 0; i < numTests_val; ++i) {
+            // int problem_idx = grishaginDist(gen); // Случайный выбор
+            int problem_idx = (i % grishaginFamily.GetFamilySize()) + 1; // Последовательный выбор с циклическим повторением
+            if (problem_idx > 100 && grishaginFamily.GetFamilySize() >= 100) problem_idx = 100; // Ограничение для стандартных 100 задач Гришагина
+
+            TGrishaginProblem* grishaginProblemInstance = dynamic_cast<TGrishaginProblem*>(grishaginFamily[problem_idx]);
+            if (!grishaginProblemInstance) {
+                 std::cerr << "Ошибка: не удалось получить экземпляр задачи Гришагина " << problem_idx << std::endl;
                  continue;
             }
-            // Assuming TGrishaginProblem inherits from FunctionInterface or is adaptable
-            // For simplicity, let's assume grishFamily[index] returns a compatible type
-            // If TGrishaginProblem is the concrete type:
-            TGrishaginProblem* grishProblem = dynamic_cast<TGrishaginProblem*>(problemBase);
-            if (!grishProblem) {
-                cerr << "Ошибка: Не удалось привести к TGrishaginProblem для индекса " << index << endl;
-                continue;
+
+            double actualOptValue = grishaginProblemInstance->GetOptimumValue();
+            std::vector<double> actualOptPointCoords = grishaginProblemInstance->GetOptimumPoint();
+
+            std::cout << "\nЗадача Гришагина, индекс " << problem_idx << std::endl;
+            std::cout << "Известный оптимум (из файла): " << actualOptValue;
+            if (actualOptPointCoords.size() >= 2) {
+                 std::cout << " в точке (y1,y2) = (" << actualOptPointCoords[0] << ", " << actualOptPointCoords[1] << ")" << std::endl;
+            } else {
+                std::cout << " (координаты точки оптимума не полностью определены)" << std::endl;
             }
 
-            double actualMin = grishProblem->GetOptimumValue();
-            vector<double> actualMinPoint = grishProblem->GetOptimumPoint();
-            cout << "\nGrishagin Problem " << index << endl;
-            cout << "Фактический минимум (из файла): " << actualMin;
-            if (actualMinPoint.size() >= 2) {
-                 cout << " в точке (x,y) = (" << actualMinPoint[0] << ", " << actualMinPoint[1] << ")" << endl;
-            } else {
-                cout << " (точка оптимума не полностью определена)" << endl;
-            }
+            // Параметры для поиска с кривой Пеано
+            double peano_param_min = 0.0; // Границы для одномерного параметра x_param
+            double peano_param_max = 1.0;
+            int peano_order_m = 10;       // Порядок кривой Пеано (m)
+            int problem_dim_n = 2;        // Размерность исходной задачи Гришагина (n)
+            int peano_key = 1;            // Ключ для функции mapd кривой Пеано
 
-            vector<double> a = {0.0}; // Search space for the 1D parameter of Peano curve
-            vector<double> b = {1.0};
-            // The type for Minimizer should be the concrete problem type TGrishaginProblem
-            Minimizer<TGrishaginProblem> minimizer(a, b, epsilon_val, r_val, *grishProblem, 10, 2, 1); // order=10, dim=2, key=1
-            
-            auto startTime = chrono::high_resolution_clock::now();
-            vector<double> computedMinPoint = minimizer.findMinimum();
-            auto endTime = chrono::high_resolution_clock::now();
-            chrono::duration<double> duration = endTime - startTime;
-            
-            cout << "Посчитанный минимум: " << grishProblem->ComputeFunction(computedMinPoint);
-            if (computedMinPoint.size() >= 2) {
-                cout << " в точке (x,y) = (" << computedMinPoint[0] << ", " << computedMinPoint[1] << ")" << endl;
-            } else if (!computedMinPoint.empty()){
-                 cout << " в точке x_param = " << computedMinPoint[0] << " (многомерная точка не полностью определена)" << endl;
+            Minimizer<TGrishaginProblem> minimizer(
+                peano_param_min, peano_param_max,
+                epsilon_param, r_param_strongin, *grishaginProblemInstance,
+                peano_order_m, problem_dim_n, peano_key
+            );
+
+            auto startTime = std::chrono::high_resolution_clock::now();
+            std::vector<double> computedMinCoords = minimizer.findMinimum();
+            auto endTime = std::chrono::high_resolution_clock::now();
+            std::chrono::duration<double> duration = endTime - startTime;
+
+            double computedOptValue = computedMinCoords.empty() ? NAN : grishaginProblemInstance->ComputeFunction(computedMinCoords);
+            std::cout << "Найденный минимум: " << computedOptValue;
+            if (computedMinCoords.size() >= 2) {
+                std::cout << " в точке (y1,y2) = (" << computedMinCoords[0] << ", " << computedMinCoords[1] << ")" << std::endl;
+            } else if (!computedMinCoords.empty()){
+                 std::cout << " (многомерные координаты не полностью определены, возможно только x_param найден)" << std::endl;
             } else {
-                cout << " (точка не найдена)" << endl;
+                std::cout << " (точка не найдена)" << std::endl;
             }
-            cout << "Итераций: " << minimizer.GetIterationCount() << ", время: "
-                 << duration.count() * 1000 << " мс" << endl;
-            totalIterations += minimizer.GetIterationCount();
-            exitMainTotal += minimizer.GetExitMainCount();
-            exitTestTotal += minimizer.GetExitTestCount();
-            dataFile << i + 1 << " " << minimizer.GetIterationCount() << endl;
+            std::cout << "Итераций: " << minimizer.GetIterationCount() << ", время: "
+                 << duration.count() * 1000 << " мс" << std::endl;
+
+            cumulativeIterations += minimizer.GetIterationCount();
+            totalExitMainCount += minimizer.GetExitMainCount();
+            totalExitTestCount += minimizer.GetExitTestCount();
+            dataFile << i + 1 << " " << minimizer.GetIterationCount() << std::endl;
         }
     } else {
-        cout << "Некорректный выбор." << endl;
-        dataFile.close(); // Close file even on error
+        std::cout << "Некорректный выбор типа задачи." << std::endl;
+        dataFile.close();
         return 1;
     }
     dataFile.close();
 
-    // Write general statistics to stats.txt
-    ofstream statsFile("stats.txt", ios::out);
+    // Запись общей статистики в файл stats.txt
+    std::ofstream statsFile("stats.txt", std::ios::out);
     if (!statsFile.is_open()) {
-        cerr << "Ошибка открытия файла stats.txt!" << endl;
-        return 1;
+        std::cerr << "Ошибка открытия файла stats.txt!" << std::endl;
+        return 1; // Можно и не завершать программу, если статистика не критична
     }
-    statsFile << exitMainTotal << " " << exitTestTotal << endl;
-    statsFile << epsilon_val << " " << r_val << " " << numTests << endl;
+    statsFile << totalExitMainCount << " " << totalExitTestCount << std::endl;
+    statsFile << epsilon_param << " " << r_param_strongin << " " << numTests_val << std::endl;
     statsFile.close();
 
-    cout << "\nОбщая статистика:" << endl;
-    if (numTests > 0) {
-        cout << "Среднее число итераций: " << totalIterations / numTests << endl;
+    std::cout << "\nОбщая статистика:" << std::endl;
+    if (numTests_val > 0) {
+        std::cout << "Среднее число итераций: " << cumulativeIterations / numTests_val << std::endl;
     } else {
-        cout << "Среднее число итераций: N/A (0 тестов)" << endl;
+        std::cout << "Среднее число итераций: N/A (0 тестов выполнено)" << std::endl;
     }
-    cout << "Счетчик основного условия: " << exitMainTotal << endl;
-    cout << "Счетчик дополнительного условия: " << exitTestTotal << endl;
+    std::cout << "Счетчик основного условия останова: " << totalExitMainCount << std::endl;
+    std::cout << "Счетчик дополнительного условия останова: " << totalExitTestCount << std::endl;
 
-    // Run Python script for plotting
-    string command = "python ../../plot_graph.py"; // Adjust path if necessary
-    #ifdef _WIN32
-        // No special handling needed for system() on Windows for python usually
-    #else // Linux/macOS
-        // If python is python3 on your system:
-        // command = "python3 ../../plot_graph.py";
-    #endif
-    
-    cout << "Запуск скрипта построения графика: " << command << endl;
-    int result = system(command.c_str());
-    if (result != 0) {
-       cerr << "Ошибка при запуске Python скрипта! Код ошибки: " << result << endl;
-       // Don't return 1 here, as minimization might have been successful.
-       // This is a post-processing step.
+    // Запуск Python-скрипта для построения графика
+    std::string python_command = "python ../../plot_graph.py"; // Путь к скрипту может потребовать корректировки
+    // Для Linux/macOS может потребоваться "python3"
+    // #ifdef __linux__ || __APPLE__
+    //  python_command = "python3 ../../plot_graph.py";
+    // #endif
+
+    std::cout << "Запуск скрипта для построения графика: " << python_command << std::endl;
+    int script_result = system(python_command.c_str());
+    if (script_result != 0) {
+       std::cerr << "Ошибка при запуске Python скрипта! Код ошибки: " << script_result << std::endl;
+       // Не завершаем программу из-за этого, так как основная работа выполнена
     }
 
-    cout << "Нажмите Enter для выхода...";
-    cin.ignore(numeric_limits<streamsize>::max(), '\n'); // Clear remaining input
-    cin.get(); // Wait for Enter key
+    std::cout << "\nНажмите Enter для выхода...";
+    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // Очистка буфера ввода
+    std::cin.get();
 
     return 0;
 }
