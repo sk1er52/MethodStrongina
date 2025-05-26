@@ -56,7 +56,7 @@ private:
     double epsilon_val;
     double r_strongin_parameter;
     const T_ProblemType& function_instance;
-    std::ofstream logFile_stream;
+    std::ostream &logger;
 
     int iteration_counter;
     int exit_main_criteria_count;
@@ -73,7 +73,7 @@ private:
     // --- Приватные методы с определениями прямо здесь (inline) ---
     
     void performFirstIteration() {
-        logFile_stream << "Первая итерация:\n";
+        logger << "Первая итерация:\n";
         Point p_left;
         p_left.x_param = searchLeftBound_param[0];
         if (!use_peano_mapping_flag) {
@@ -124,7 +124,7 @@ private:
                 max_R_idx = i;
             }
         }
-        logFile_stream << "Макс. характеристика R = " << max_R_val << " на интервале x_param=["
+        logger << "Макс. характеристика R = " << max_R_val << " на интервале x_param=["
                        << trial_points_list[max_R_idx].x_param << ", "
                        << trial_points_list[max_R_idx+1].x_param << "]\n";
         return max_R_idx;
@@ -175,116 +175,163 @@ private:
         return use_peano_mapping_flag ? (1.0 / static_cast<double>(problem_actual_dimension)) : 1.0;
     }
     
-    bool checkStoppingConditions(const Point& p_left_of_interval, const Point& /* new_p_ref - не используется */, const Point& p_right_of_interval) {
-        // double chosen_interval_length = p_right_of_interval.x_param - p_left_of_interval.x_param;
-        
-        // // 1. Основное условие останова по Стронгину (длина выбранного интервала)
-        // if (chosen_interval_length <= epsilon_val) {
-        //      logFile_stream << "Условие останова (основное): длина выбранного интервала (" << chosen_interval_length 
-        //                << ") <= epsilon_abs (" << epsilon_val << ")\n";
-        //      exit_main_criteria_count++;
-        //      return true;
-        // }
+    bool checkStoppingConditions(const Point& p_left_of_interval, const Point& /* new_p_ref_not_used */, const Point& p_right_of_interval) {
+    logger << "\n--- CheckStoppingConditions (Итерация: " << iteration_counter << ") ---" << std::endl;
 
-        // 2. Дополнительное условие для МНОГОМЕРНОГО случая (если используется Пеано)
-        //    Остановка, если максимум модуля разности |z_i - z*| <= epsilon
-        if (use_peano_mapping_flag) {
-            // Предполагаем, что T_ProblemType имеет метод GetOptimumValue()
-            // Это должно быть частью вашего интерфейса IOptProblem или аналогичного.
-            double known_optimum_z_value = function_instance.GetOptimumValue();
+    Point y_current_best_point;
+    bool best_point_found_for_check = false;
 
-            if (!std::isnan(known_optimum_z_value) && !trial_points_list.empty()) {
-                double max_abs_diff_z = 0.0;
+    if (!trial_points_list.empty()) {
+        size_t best_idx = 0;
+        double min_z_val = std::numeric_limits<double>::infinity();
 
-                for (const auto& p : trial_points_list) {
-                    double current_diff = std::abs(p.z_value - known_optimum_z_value);
-                    if (current_diff > max_abs_diff_z) {
-                        max_abs_diff_z = current_diff;
-                    }
-                }
-
-                logFile_stream << "Проверка доп. критерия (nD): max|z_i - z*| = " << max_abs_diff_z 
-                               << ", epsilon = " << epsilon_val << "\n";
-
-                if (max_abs_diff_z <= epsilon_val) {
-                    logFile_stream << "Условие останова (дополнительное, nD): max|z_i - z*| (" << max_abs_diff_z 
-                                   << ") <= epsilon (" << epsilon_val << ").\n";
-                    exit_test_criteria_count++; // Используем другой счетчик
-                    return true;
-                }
-            } else if (std::isnan(known_optimum_z_value)) {
-                 logFile_stream << "Проверка доп. критерия (nD): известное значение оптимума z* недоступно (NAN).\n";
+        for(size_t i = 0; i < trial_points_list.size(); ++i) {
+            if (std::isnan(trial_points_list[i].z_value)) continue;
+            if (trial_points_list[i].z_value < min_z_val) {
+                min_z_val = trial_points_list[i].z_value;
+                best_idx = i;
+                best_point_found_for_check = true;
             }
         }
-        // Дополнительное условие для 1D, если оно нужно, можно добавить здесь.
-        // Например, сравнение x_param лучшей найденной точки с x_param известного оптимума.
-        // if (!use_peano_mapping_flag) { ... }
+        if (best_point_found_for_check) {
+            y_current_best_point = trial_points_list[best_idx];
+        }
+    }
 
-        return false;
+    // --- Критерий 1: Проверка близости КООРДИНАТ Y лучшей точки к известному оптимуму Y* (для nD) ---
+    // Этот критерий будет основным, если y* известен.
+    if (use_peano_mapping_flag && best_point_found_for_check) {
+        std::vector<double> known_optimum_y_coords = function_instance.GetOptimumPoint();
+
+        if (!known_optimum_y_coords.empty() && 
+            known_optimum_y_coords.size() == problem_actual_dimension && 
+            y_current_best_point.y_coords.size() == problem_actual_dimension) {
+            
+            double max_abs_coord_diff = 0.0; // Максимальная абсолютная разница по одной из координат
+            bool all_coords_close_enough = true;
+
+            logger << "  Проверка критерия по КООРДИНАТАМ Y:" << std::endl;
+            logger << "    Лучшая найденная Y: [";
+            for(size_t j=0; j < y_current_best_point.y_coords.size(); ++j) logger << y_current_best_point.y_coords[j] << (j==y_current_best_point.y_coords.size()-1 ? "" : ", ");
+            logger << "], Z_best=" << y_current_best_point.z_value << std::endl;
+            logger << "    Известный оптимум Y*: [";
+            for(size_t j=0; j < known_optimum_y_coords.size(); ++j) logger << known_optimum_y_coords[j] << (j==known_optimum_y_coords.size()-1 ? "" : ", ");
+            logger << "], Z*=" << function_instance.GetOptimumValue() << std::endl;
+            logger << "    Epsilon для координат: " << epsilon_val << std::endl;
+
+
+            for(int j=0; j < problem_actual_dimension; ++j) {
+                double coord_diff = std::abs(y_current_best_point.y_coords[j] - known_optimum_y_coords[j]);
+                logger << "      Координата " << j << ": |" << y_current_best_point.y_coords[j] << " - " << known_optimum_y_coords[j] << "| = " << coord_diff << std::endl;
+                if (coord_diff > max_abs_coord_diff) {
+                    max_abs_coord_diff = coord_diff;
+                }
+                // Если вы хотите, чтобы КАЖДАЯ координата была <= epsilon:
+                if (coord_diff > epsilon_val) {
+                    all_coords_close_enough = false;
+                    // break; // Можно выйти раньше, если уже одна координата не удовлетворяет
+                }
+            }
+            
+            // Вариант 1: Останавливаемся, если МАКСИМАЛЬНАЯ из разниц по координатам <= epsilon_val
+            // logger << "  Итоговая max_j |y_best[j] - y_optimum[j]| = " << max_abs_coord_diff << std::endl;
+            // if (max_abs_coord_diff <= epsilon_val) {
+            //    logger << "  Условие останова (доп. nD по MAX КООРД. РАЗНИЦЕ) СРАБОТАЛО.\n";
+            //    exit_test_criteria_count++;
+            //    return true;
+            // }
+
+            // Вариант 2 (тот, что вы просили): Останавливаемся, если ВСЕ координатные разницы <= epsilon_val
+            logger << "  Проверка: все ли |y_best[j] - y_optimum[j]| <= epsilon_val (" << epsilon_val << ")? " 
+                   << (all_coords_close_enough ? "ДА" : "НЕТ") << std::endl;
+            if (all_coords_close_enough) {
+               logger << "  Условие останова (доп. nD по ВСЕМ КООРД. РАЗНИЦАМ) СРАБОТАЛО.\n";
+               exit_test_criteria_count++;
+               return true;
+            }
+
+        } else {
+            logger << "  Проверка доп. критерия (nD) по координатам Y: Известный оптимум Y* недоступен или несоответствие размерностей." << std::endl;
+        }
+    } // конец if (use_peano_mapping_flag && best_point_found_for_check)
+
+
+    // // --- Критерий 2: Основной по длине интервала x_param ---
+    // // Этот критерий ВСЕГДА ДОЛЖЕН БЫТЬ АКТИВЕН как гарантия завершения,
+    // // если другие более специфичные критерии не сработали.
+    // double chosen_interval_length = p_right_of_interval.x_param - p_left_of_interval.x_param;
+    // // Эпсилон для x_param должен быть достаточно мал.
+    // double epsilon_for_x_param = 1e-6; // Фиксированное очень малое значение.
+    //                                    // НЕ ЗАВИСИТ от epsilon_val, который теперь для координат Y.
+
+    // logger << "  Основной критерий: длина интервала x_param = " << chosen_interval_length 
+    //        << ", epsilon_for_x_param = " << epsilon_for_x_param << std::endl;
+
+    // if (chosen_interval_length <= epsilon_for_x_param) {
+    //      logger << "  Условие останова (ОСНОВНОЕ, по X_PARAM) СРАБОТАЛО.\n";
+    //      exit_main_criteria_count++;
+    //      return true;
+    // }
+    
+    logger << "--- Конец CheckStoppingConditions (никакое условие не сработало) ---" << std::endl;
+    return false;
     }
 
     // Объявление с аргументом по умолчанию
     void logTrialPointToFile(const Point& p, const std::string& prefix = "") {
-        if (!logFile_stream.is_open()) return;
-        logFile_stream << prefix;
-        logFile_stream << "x_param: " << p.x_param << ", z_value: " << p.z_value << ", y_coords: [";
+        //if (!logger.is_open()) return;
+        logger << prefix;
+        logger << "x_param: " << p.x_param << ", z_value: " << p.z_value << ", y_coords: [";
         for (size_t i = 0; i < p.y_coords.size(); ++i) {
-            logFile_stream << p.y_coords[i] << (i == p.y_coords.size() - 1 ? "" : ", ");
+            logger << p.y_coords[i] << (i == p.y_coords.size() - 1 ? "" : ", ");
         }
-        logFile_stream << "]" << std::endl;
+        logger << "]" << std::endl;
     }
 
 public:
     Minimizer(const std::vector<double>& problem_domain_a, const std::vector<double>& problem_domain_b,
-              double eps, double r_val, const T_ProblemType& func)
+              double eps, double r_val, const T_ProblemType& func, std::ostream& log_stream)
         : epsilon_val(eps), r_strongin_parameter(r_val), function_instance(func),
           iteration_counter(0), exit_main_criteria_count(0), exit_test_criteria_count(0),
-          use_peano_mapping_flag(false), problem_actual_dimension(1), current_m_phi_estimate(1.0)
+          use_peano_mapping_flag(false), problem_actual_dimension(1), current_m_phi_estimate(1.0), logger(log_stream)
     {
         if (problem_domain_a.empty() || problem_domain_b.empty()) {
             throw std::invalid_argument("Границы задачи (1D) не могут быть пустыми.");
         }
         searchLeftBound_param = problem_domain_a;
         searchRightBound_param = problem_domain_b;
-        logFile_stream.open("minimization_log.txt", std::ios::out);
-        if (!logFile_stream.is_open()) {
-            std::cerr << "Ошибка открытия файла журнала!" << std::endl;
-        }
+        logger << ">>>> 1D КОНСТРУКТОР MINIMIZER ВЫЗВАН <<<<" << std::endl;
     }
 
     Minimizer(double peano_search_param_a, double peano_search_param_b,
               double eps, double r_val, const T_ProblemType& func,
-              int mapping_m_order, int original_problem_dimension, int mapping_key)
+              int mapping_m_order, int original_problem_dimension, int mapping_key, std::ostream& log_stream)
         : epsilon_val(eps), r_strongin_parameter(r_val), function_instance(func),
           iteration_counter(0), exit_main_criteria_count(0), exit_test_criteria_count(0),
           use_peano_mapping_flag(true), peano_mapping_m_order(mapping_m_order),
-          problem_actual_dimension(original_problem_dimension), peano_mapping_key_type(mapping_key), current_m_phi_estimate(1.0)
+          problem_actual_dimension(original_problem_dimension), peano_mapping_key_type(mapping_key), current_m_phi_estimate(1.0), logger(log_stream)
     {
         searchLeftBound_param = {peano_search_param_a};
         searchRightBound_param = {peano_search_param_b};
-        logFile_stream.open("minimization_log.txt", std::ios::out);
-        if (!logFile_stream.is_open()) {
-            std::cerr << "Ошибка открытия файла журнала!" << std::endl;
-        }
+        logger << ">>>> nD КОНСТРУКТОР MINIMIZER ВЫЗВАН <<<<" << std::endl;
     }
 
     ~Minimizer() {
-        if (logFile_stream.is_open()) {
-            logFile_stream.close();
-        }
+        logger << ">>>> ДЕСТРУКТОР MINIMIZER ВЫЗВАН <<<<" << std::endl;
     }
 
     std::vector<double> findMinimum() {
+        logger << ">>>> findMinimum() НАЧАЛО (Задача: ...) <<<<" << std::endl; 
         trial_points_list.clear();
         iteration_counter = 0;
         exit_main_criteria_count = 0;
         exit_test_criteria_count = 0;
-        const int MAX_ITERATIONS_LIMIT = 10000; // Можно сделать настраиваемым
+        const int MAX_ITERATIONS_LIMIT = 20000; // Можно сделать настраиваемым
 
         performFirstIteration();
 
         if (trial_points_list.size() < 2) {
-            logFile_stream << "Ошибка: Первая итерация не создала достаточно точек для начала основного цикла." << std::endl;
+            this->logger << "Ошибка: Первая итерация не создала достаточно точек для начала основного цикла." << std::endl;
             if (!trial_points_list.empty()) return trial_points_list[0].y_coords;
             return {}; 
         }
@@ -323,7 +370,7 @@ public:
             for(const auto& existing_p : trial_points_list) {
                 if (std::abs(existing_p.x_param - new_point.x_param) < 1e-10) { // Порог близости
                     already_exists_nearby = true;
-                    logFile_stream << "Итерация " << iteration_counter << ": Новая точка x_param=" << new_point.x_param 
+                    this->logger << "Итерация " << iteration_counter << ": Новая точка x_param=" << new_point.x_param 
                                    << " слишком близка к существующей. Попытка сдвига или пропуск.\n";
                     // Если точка очень близка, пытаемся немного сдвинуть или обработать иначе,
                     // чтобы избежать застревания. В generateNewTrialPoint уже есть логика отступа.
@@ -336,7 +383,7 @@ public:
                 }
             }
              if (already_exists_nearby && (trial_points_list[interval_to_split_idx+1].x_param - trial_points_list[interval_to_split_idx].x_param <= epsilon_val * 0.1 )) {
-                logFile_stream << "Интервал очень мал и новая точка близка к существующей. Вероятна остановка.\n";
+                this->logger << "Интервал очень мал и новая точка близка к существующей. Вероятна остановка.\n";
                 // Не добавляем точку, пусть сработает условие останова по длине интервала.
                 // Это более безопасный выход, чем continue, который может зациклить.
              } else {
@@ -356,13 +403,13 @@ public:
                     min_z_idx = i;
                 }
             }
-            logFile_stream << "Минимум найден в точке (x_param=" << trial_points_list[min_z_idx].x_param
+            this->logger << "Минимум найден в точке (x_param=" << trial_points_list[min_z_idx].x_param
                            << ", z=" << trial_points_list[min_z_idx].z_value << ")\n";
             logTrialPointToFile(trial_points_list[min_z_idx], "Лучшая точка: ");
             return trial_points_list[min_z_idx].y_coords;
         }
         
-        logFile_stream << "Список пробных точек пуст или произошла ошибка, оптимум не найден.\n";
+        this->logger << "Список пробных точек пуст или произошла ошибка, оптимум не найден.\n";
         return {};
     }
 

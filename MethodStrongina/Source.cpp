@@ -5,6 +5,7 @@
 #include <string>
 #include <chrono>
 #include <random>
+#include <fstream>
 #include <cstdlib>     // Для system()
 #include <limits>      // Для numeric_limits
 #include <cmath>       // Для NAN, если используется
@@ -24,6 +25,13 @@
 
 int main() {
     setlocale(LC_ALL, "Russian");
+    
+    std::ofstream main_log_file("minimization_log.txt", std::ios::out); // std::ios::out перезапишет старый файл
+    if (!main_log_file.is_open()) {
+        std::cerr << "КРИТИЧЕСКАЯ ОШИБКА: Не удалось открыть основной лог-файл minimization_log.txt!" << std::endl;
+        return 1; // Завершаем, если лог не открылся
+    }
+    main_log_file << "--- Начало сессии логирования ---" << std::endl;
 
     int taskType_choice;
     int numTests_val;
@@ -43,6 +51,8 @@ int main() {
     std::cout << "Введите параметр r метода Стронгина (например, >1, обычно 2.0-4.0): ";
     std::cin >> r_param_strongin;
 
+    main_log_file << "Выбран тип задачи: " << taskType_choice << std::endl;
+    main_log_file << "Количество тестов: " << numTests_val << ", Эпсилон: " << epsilon_param << ", r: " << r_param_strongin << std::endl;
     // Файл для записи данных для построения графика
     std::ofstream dataFile("plot_data.txt", std::ios::out);
     if (!dataFile.is_open()) {
@@ -93,7 +103,12 @@ int main() {
                 std::vector<double> problem_domain_a = {0.0};
                 std::vector<double> problem_domain_b = {1.0};
 
-                Minimizer<THillProblem> minimizer(problem_domain_a, problem_domain_b, epsilon_param, r_param_strongin, *hillProblemInstance);
+                main_log_file << "\n--- Запуск теста 1D: " << (subChoice == 1 ? "Хилл" : "Шекель") 
+                          << ", Индекс задачи " << problem_idx << " ---" << std::endl;
+                std::cout << "DEBUG: Перед созданием 1D Minimizer..." << std::endl;
+                Minimizer<THillProblem> minimizer(problem_domain_a, problem_domain_b, epsilon_param, r_param_strongin, 
+                                                *hillProblemInstance, main_log_file); // Передаем main_log_file
+                std::cout << "DEBUG: 1D Minimizer создан." << std::endl;
 
                 auto startTime = std::chrono::high_resolution_clock::now();
                 std::vector<double> computedMinCoords = minimizer.findMinimum();
@@ -128,8 +143,15 @@ int main() {
                 // Границы для одномерной задачи Шекеля (обычно [0,10])
                 std::vector<double> problem_domain_a = {0.0};
                 std::vector<double> problem_domain_b = {10.0};
+                
+                main_log_file << "\n--- Запуск теста 1D: " << (subChoice == 1 ? "Хилл" : "Шекель") 
+                          << ", Индекс задачи " << problem_idx << " ---" << std::endl;
+                std::cout << "DEBUG: Перед созданием 1D Minimizer..." << std::endl;
+                Minimizer<TShekelProblem> minimizer(problem_domain_a, problem_domain_b, epsilon_param, r_param_strongin, 
+                                                *shekelProblemInstance, main_log_file); // Передаем main_log_file
+                std::cout << "DEBUG: 1D Minimizer создан." << std::endl;
 
-                Minimizer<TShekelProblem> minimizer(problem_domain_a, problem_domain_b, epsilon_param, r_param_strongin, *shekelProblemInstance);
+                //Minimizer<TShekelProblem> minimizer(problem_domain_a, problem_domain_b, epsilon_param, r_param_strongin, *shekelProblemInstance);
 
                 auto startTime = std::chrono::high_resolution_clock::now();
                 std::vector<double> computedMinCoords = minimizer.findMinimum();
@@ -179,15 +201,19 @@ int main() {
             // Параметры для поиска с кривой Пеано
             double peano_param_min = 0.0; // Границы для одномерного параметра x_param
             double peano_param_max = 1.0;
-            int peano_order_m = 10;       // Порядок кривой Пеано (m)
+            int peano_order_m = 15;       // Порядок кривой Пеано (m)
             int problem_dim_n = 2;        // Размерность исходной задачи Гришагина (n)
             int peano_key = 1;            // Ключ для функции mapd кривой Пеано
 
+            main_log_file << "\n--- Запуск теста nD: Гришагин, Индекс задачи " << problem_idx << " ---" << std::endl;
+            std::cout << "DEBUG: Перед созданием nD Minimizer для задачи " << problem_idx << "..." << std::endl;
             Minimizer<TGrishaginProblem> minimizer(
                 peano_param_min, peano_param_max,
                 epsilon_param, r_param_strongin, *grishaginProblemInstance,
-                peano_order_m, problem_dim_n, peano_key
+                peano_order_m, problem_dim_n, peano_key,
+                main_log_file // Передаем main_log_file
             );
+            std::cout << "DEBUG: nD Minimizer создан." << std::endl;
 
             auto startTime = std::chrono::high_resolution_clock::now();
             std::vector<double> computedMinCoords = minimizer.findMinimum();
@@ -255,5 +281,8 @@ int main() {
     std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // Очистка буфера ввода
     std::cin.get();
 
+    main_log_file << "--- Конец сессии логирования ---" << std::endl;
+    main_log_file.close(); // Закрываем файл в конце main
+    std::cout << "DEBUG: Программа main завершает работу. Лог-файл закрыт." << std::endl;
     return 0;
 }
