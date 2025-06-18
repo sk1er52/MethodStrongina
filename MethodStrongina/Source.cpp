@@ -12,7 +12,6 @@
 #include <string>
 #include <vector>
 
-
 #include "GrishaginProblemFamily.hpp"
 #include "HillProblem.hpp"
 #include "HillProblemFamily.hpp"
