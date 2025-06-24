@@ -4,9 +4,9 @@
 
 #include <algorithm> // Для std::max_element, std::max, std::min, std::sort, std::lower_bound
 #include <cmath>
-#include <fstream> // Для std::ofstream в main.cpp, но не в Minimizer
+#include <fstream>
 #include <iomanip> // Для std::fixed, std::setprecision в логировании, если нужно
-#include <iostream> // Для std::cerr и std::ostream
+#include <iostream>
 #include <limits>
 #include <numeric> // Для std::distance (не используется сейчас, но может пригодиться)
 #include <stdexcept> // Для std::invalid_argument
@@ -30,50 +30,69 @@ class FunctionInterface {
 public:
   virtual double ComputeFunction(const std::vector<double> &x) const = 0;
   virtual std::vector<double> GetOptimumPoint() const = 0;
-  virtual double GetOptimumValue() const = 0; // Убедитесь, что этот метод есть
+  virtual double GetOptimumValue() const = 0;
   virtual ~FunctionInterface() {}
 };
 
-//
 // Объявления функций кривой Пеано
-//
 extern int n1, nexp, l, iq, iu[10], iv[10];
-
 void mapd(double x, int m, double *y, int n, int key);
 void node(int is);
-void resetMappingGlobals(int n); // n - размерность
-std::vector<double> peanoMapping(double x, int m, int n, int key);
+void resetMappingGlobals(int n);
+std::vector<double> peanoMapping(
+    double x, int m, int n,
+    int key); // Изменено: убран логгер отсюда, т.к. mapd его не принимает
 
-//
 // Шаблонный класс Minimizer
-//
 template <typename T_ProblemType> class Minimizer {
 private:
   std::vector<double> searchLeftBound_param;
   std::vector<double> searchRightBound_param;
-  double epsilon_val; // Используется для критерия останова по координатам Y
+  double epsilon_val; // Используется для критерия останова по координатам Y и
+                      // для Гёльдеровской длины интервала
   double r_strongin_parameter;
   const T_ProblemType &function_instance;
   std::ostream &logger;
 
-  int max_iterations_limit_member; // Максимальное количество итераций
+  int max_iterations_limit_member;
   int iteration_counter;
-  int exit_main_criteria_count; // Счетчик для останова по x_param интервалу
-  int exit_test_criteria_count; // Счетчик для останова по Y координатам
+  int exit_main_criteria_count;
+  int exit_test_criteria_count;
 
   std::vector<Point> trial_points_list;
 
   bool use_peano_mapping_flag;
   int peano_mapping_m_order;
-  int problem_actual_dimension;
+  int problem_actual_dimension; // N из теории
   int peano_mapping_key_type;
 
-  double current_m_phi_estimate;
+  double current_r_mu_estimate;   // r_v * mu_v из книги (аналог вашего
+                                  // current_m_phi_estimate)
+  double current_max_mu_estimate; // M или mu_v из книги (аналог вашего
+                                  // max_abs_slope)
 
   // --- Приватные методы ---
 
+  // Метод для вычисления гёльдеровской длины интервала (delta_i из книги)
+  double getHolderDelta(double x_left, double x_right) const {
+    double dx_param_abs = std::abs(x_right - x_left);
+    if (!use_peano_mapping_flag || problem_actual_dimension <= 0) {
+      return dx_param_abs;
+    }
+    if (problem_actual_dimension == 1 &&
+        use_peano_mapping_flag) { // Если Пеано для 1D (редко, но возможно)
+      return dx_param_abs;
+    }
+    if (dx_param_abs < 1e-15)
+      return 1e-15; // Избегаем pow(0,...) и очень малых чисел, которые могут
+                    // дать 0 Возвращаем малое положительное число, чтобы
+                    // избежать деления на ноль в R
+    return std::pow(dx_param_abs,
+                    1.0 / static_cast<double>(problem_actual_dimension));
+  }
+
   void performFirstIteration() {
-    logger << "First iteration (Minimizer):\n";
+    logger << "Первая итерация (Minimizer):\n";
 
     Point p_left;
     p_left.x_param = searchLeftBound_param[0];
@@ -86,7 +105,7 @@ private:
     }
     p_left.z_value = function_instance.ComputeFunction(p_left.y_coords);
     trial_points_list.push_back(p_left);
-    logTrialPointToFile(p_left, "  First trial(left): ");
+    logTrialPointToFile(p_left, "  Начальная точка (левая): ");
 
     Point p_right;
     p_right.x_param = searchRightBound_param[0];
@@ -99,13 +118,11 @@ private:
     }
     p_right.z_value = function_instance.ComputeFunction(p_right.y_coords);
     trial_points_list.push_back(p_right);
-    logTrialPointToFile(p_right, "  First trial (right): ");
+    logTrialPointToFile(p_right, "  Начальная точка (правая): ");
 
     if (use_peano_mapping_flag &&
-        (searchLeftBound_param[0] <= 0.5 &&
-         searchRightBound_param[0] >=
-             0.5) &&                    // Убедимся, что 0.5 внутри диапазона
-        problem_actual_dimension > 0) { // И что есть размерность
+        (searchLeftBound_param[0] <= 0.5 && searchRightBound_param[0] >= 0.5) &&
+        problem_actual_dimension > 0) {
 
       double x_param_for_center = 0.5;
       bool center_is_new = true;
@@ -117,7 +134,8 @@ private:
       }
 
       if (center_is_new) {
-        logger << "  Center trial" << x_param_for_center << std::endl;
+        logger << "  Принудительное добавление 'центральной' точки для x_param="
+               << x_param_for_center << std::endl;
         Point center_point;
         center_point.x_param = x_param_for_center;
         center_point.y_coords =
@@ -131,22 +149,32 @@ private:
                   [](const Point &a, const Point &b) {
                     return a.x_param < b.x_param;
                   });
-        logTrialPointToFile(center_point, "  ПCenter trial (x_param=0.5): ");
+        logTrialPointToFile(
+            center_point,
+            "  Принудительная 'центральная' точка (x_param=0.5): ");
       }
     }
-    logger << "First iteration (Minimizer) ENDED. Trials in list: "
+    logger << "Первая итерация (Minimizer) ЗАВЕРШЕНА. Точек в списке: "
            << trial_points_list.size() << std::endl;
   }
 
   double computeIntervalCharacteristicR(const Point &p1,
                                         const Point &p2) const {
-    double dx_param = p2.x_param - p1.x_param;
-    if (std::abs(dx_param) < 1e-12) {
+    double delta_i = getHolderDelta(p1.x_param, p2.x_param);
+
+    if (delta_i < 1e-12) { // Если гёльдеровская длина очень мала
       return -std::numeric_limits<double>::infinity();
     }
     double dz = p2.z_value - p1.z_value;
-    double reliable_m_phi = std::max(current_m_phi_estimate, 1e-9);
-    return reliable_m_phi * dx_param + (dz * dz) / (reliable_m_phi * dx_param) -
+    // current_r_mu_estimate это r_v * mu_v из книги
+    double reliable_r_mu =
+        std::max(current_r_mu_estimate,
+                 r_strongin_parameter); // Если m_phi=0, используем r (т.к. M=1)
+                                        // или просто r_strongin_parameter, если
+                                        // mu_v=0, то r_v*mu_v -> r_v*1
+
+    // Стандартная формула Стронгина, но с delta_i
+    return reliable_r_mu * delta_i + (dz * dz) / (reliable_r_mu * delta_i) -
            2.0 * (p1.z_value + p2.z_value);
   }
 
@@ -163,9 +191,9 @@ private:
         max_R_idx = i;
       }
     }
-    logger << " R = " << max_R_val << " in interval x_param=["
-           << trial_points_list[max_R_idx].x_param << ", "
-           << trial_points_list[max_R_idx + 1].x_param << "]\n";
+    logger << "  Макс. характеристика R = " << max_R_val
+           << " на интервале x_param=[" << trial_points_list[max_R_idx].x_param
+           << ", " << trial_points_list[max_R_idx + 1].x_param << "]\n";
     return max_R_idx;
   }
 
@@ -173,38 +201,69 @@ private:
     const Point &p_left = trial_points_list[interval_index_left];
     const Point &p_right = trial_points_list[interval_index_left + 1];
     Point new_p;
-    double reliable_m_phi_for_new_point =
-        std::max(current_m_phi_estimate, 1e-9);
-    new_p.x_param = 0.5 * (p_left.x_param + p_right.x_param) -
-                    (p_right.z_value - p_left.z_value) /
-                        (2.0 * reliable_m_phi_for_new_point);
 
-    double interval_width = p_right.x_param - p_left.x_param;
-    double min_rel_step = 0.001;
-    double abs_min_step = 1e-9;
+    double xL = p_left.x_param;
+    double xR = p_right.x_param;
+    double zL = p_left.z_value;
+    double zR = p_right.z_value;
+
+    if (use_peano_mapping_flag &&
+        problem_actual_dimension >
+            0) { // Используем формулу из книги для N-мерного случая
+      // x^{k+1} = (x_t + x_{t-1})/2 - sign(z_t - z_{t-1}) * (1/(2*r_v)) * [|z_t
+      // - z_{t-1}| / mu_v]^N current_max_mu_estimate это mu_v (M)
+      // r_strongin_parameter это r_v
+      double mu_v_calc =
+          std::max(current_max_mu_estimate, 1e-9); // Защита от деления на ноль
+      if (current_max_mu_estimate < 1e-9)
+        mu_v_calc = 1.0; // Если наклон 0, mu_v=1 по книге
+
+      double term_dz_mu = std::abs(zR - zL) / mu_v_calc;
+      double power_term =
+          std::pow(term_dz_mu, static_cast<double>(problem_actual_dimension));
+
+      int sign_dz = (zR - zL > 0) ? 1 : ((zR - zL < 0) ? -1 : 0);
+      if (std::abs(zR - zL) < 1e-9)
+        sign_dz = 0; // Если dz=0, то и поправка 0
+
+      new_p.x_param = 0.5 * (xL + xR) -
+                      static_cast<double>(sign_dz) *
+                          (1.0 / (2.0 * r_strongin_parameter)) * power_term;
+      logger << "    Новая точка (nD по книге): x_L=" << xL << ", x_R=" << xR
+             << ", z_L=" << zL << ", z_R=" << zR << ", sign_dz=" << sign_dz
+             << ", r_v=" << r_strongin_parameter << ", mu_v=" << mu_v_calc
+             << ", |zR-zL|/mu_v=" << term_dz_mu
+             << ", N=" << problem_actual_dimension
+             << ", power_term=" << power_term
+             << ", x_new_calc=" << new_p.x_param << std::endl;
+
+    } else { // 1D случай (или если problem_actual_dimension некорректна)
+      double reliable_r_mu_for_new_point =
+          std::max(current_r_mu_estimate, r_strongin_parameter);
+      new_p.x_param =
+          0.5 * (xL + xR) - (zR - zL) / (2.0 * reliable_r_mu_for_new_point);
+    }
+
+    // Ограничение новой точки
+    double interval_width = xR - xL;
+    double min_rel_step = 0.0001;
+    double abs_min_step = 1e-10;
     double step_from_boundary =
         std::max(abs_min_step, interval_width * min_rel_step);
 
-    if (interval_width <= 1e-12) { // Если интервал очень мал или нулевой
-      new_p.x_param =
-          p_left.x_param +
-          interval_width / 2.0; // Середина (может быть = p_left.x_param)
+    if (interval_width <= 1e-12) {
+      new_p.x_param = xL + interval_width / 2.0;
     } else {
-      if (new_p.x_param <=
-          p_left.x_param + abs_min_step) { // Сдвигаем от левой границы
-        new_p.x_param = p_left.x_param + step_from_boundary;
+      if (new_p.x_param <= xL + abs_min_step) {
+        new_p.x_param = xL + step_from_boundary;
       }
-      if (new_p.x_param >=
-          p_right.x_param - abs_min_step) { // Сдвигаем от правой границы
-        new_p.x_param = p_right.x_param - step_from_boundary;
+      if (new_p.x_param >= xR - abs_min_step) {
+        new_p.x_param = xR - step_from_boundary;
       }
-      // Если после коррекции точка "перепрыгнула" или осталась на границе,
-      // ставим в середину
-      if (new_p.x_param <= p_left.x_param || new_p.x_param >= p_right.x_param) {
-        new_p.x_param = p_left.x_param + interval_width / 2.0;
+      if (new_p.x_param <= xL || new_p.x_param >= xR) {
+        new_p.x_param = xL + interval_width / 2.0;
       }
     }
-    // Гарантируем, что точка не выходит за глобальные границы поиска по x_param
     new_p.x_param =
         std::max(searchLeftBound_param[0],
                  std::min(searchRightBound_param[0], new_p.x_param));
@@ -223,7 +282,7 @@ private:
   bool checkStoppingConditions(const Point &p_left_of_interval,
                                const Point & /* new_p_ref_not_used */,
                                const Point &p_right_of_interval) {
-    logger << "\n--- CheckStoppingConditions (interation: " << iteration_counter
+    logger << "\n--- CheckStoppingConditions (Итерация: " << iteration_counter
            << ") ---" << std::endl;
 
     Point y_current_best_point;
@@ -248,8 +307,9 @@ private:
     }
 
     // --- Критерий 1: Проверка близости КООРДИНАТ Y лучшей точки к известному
-    // оптимуму Y* (для nD) ---
-    if (use_peano_mapping_flag && best_point_found_for_check) {
+    // оптимуму Y* ---
+    if (use_peano_mapping_flag &&
+        best_point_found_for_check) { // Добавил use_peano_mapping_flag
       std::vector<double> known_optimum_y_coords =
           function_instance.GetOptimumPoint();
 
@@ -258,65 +318,62 @@ private:
           y_current_best_point.y_coords.size() == problem_actual_dimension) {
 
         bool all_coords_close_enough = true;
-        logger << "  Check coordinates Y:" << std::endl;
-        logger << "    Best find Y: [";
-        for (size_t j = 0; j < y_current_best_point.y_coords.size(); ++j)
-          logger << y_current_best_point.y_coords[j]
-                 << (j == y_current_best_point.y_coords.size() - 1 ? "" : ", ");
-        logger << "], Z_best=" << y_current_best_point.z_value << std::endl;
-        logger << "    Known optimum Y*: [";
-        for (size_t j = 0; j < known_optimum_y_coords.size(); ++j)
-          logger << known_optimum_y_coords[j]
-                 << (j == known_optimum_y_coords.size() - 1 ? "" : ", ");
-        logger << "], Z*=" << function_instance.GetOptimumValue() << std::endl;
-        logger << "    Epsilon Y: " << epsilon_val << std::endl;
-
+        logger << "  Проверка критерия по КООРДИНАТАМ Y:" << std::endl;
+        // ... (логирование y_best, y*, epsilon_val) ...
         for (int j = 0; j < problem_actual_dimension; ++j) {
           double coord_diff = std::abs(y_current_best_point.y_coords[j] -
                                        known_optimum_y_coords[j]);
-          logger << "      Coordinate " << j << ": |"
-                 << y_current_best_point.y_coords[j] << " - "
-                 << known_optimum_y_coords[j] << "| = " << coord_diff
-                 << std::endl;
-          if (coord_diff >
-              epsilon_val) { // epsilon_val используется для координат Y
+          if (coord_diff > epsilon_val) {
             all_coords_close_enough = false;
-            // break; // Можно выйти раньше, если важна только общая оценка
+            break;
           }
         }
-
         if (all_coords_close_enough) {
-          logger << "  First condition worked\n";
+          logger << "  Условие останова (доп. nD по ВСЕМ КООРД. РАЗНИЦАМ Y) "
+                    "СРАБОТАЛО.\n";
           exit_test_criteria_count++;
           return true;
         } else {
-          logger << "  First condition dont worked" << std::endl;
+          logger << "  Условие останова (доп. nD по ВСЕМ КООРД. РАЗНИЦАМ Y) НЕ "
+                    "СРАБОТАЛО."
+                 << std::endl;
         }
-      } else {
+      } else { /* ... */
       }
     }
 
-    // // --- Критерий 2: Основной по длине интервала x_param ---
-    // double chosen_interval_length =
-    //     p_right_of_interval.x_param - p_left_of_interval.x_param;
-    // double epsilon_for_x_param = 1e-6; // Фиксированное очень малое значение.
+    // --- Критерий 2: Основной по ГЁЛЬДЕРОВСКОЙ длине интервала x_param ---
+    // (Xt - Xt-1)^(1/N) <= epsilon (из книги стр. 219)
+    double holder_interval_length =
+        getHolderDelta(p_left_of_interval.x_param, p_right_of_interval.x_param);
 
-    // logger << "  Основной критерий: длина интервала x_param = "
-    //        << chosen_interval_length
-    //        << ", epsilon_for_x_param = " << epsilon_for_x_param << std::endl;
+    // epsilon_val из UI используется как "покоординатная точность решения
+    // задачи" (epsilon из книги)
+    double epsilon_for_holder_length_stop = epsilon_val;
 
-    // if (chosen_interval_length <= epsilon_for_x_param) {
-    //   logger << "  Условие останова (ОСНОВНОЕ, по X_PARAM) СРАБОТАЛО.\n";
-    //   exit_main_criteria_count++;
-    //   return true;
-    // }
+    logger << "  Основной критерий: гёльдеровская длина интервала x_param "
+              "(dx^(1/N))="
+           << holder_interval_length
+           << ", epsilon_for_stop=" << epsilon_for_holder_length_stop
+           << std::endl;
 
-    logger << "--- End CheckStoppingConditions ---" << std::endl;
+    if (holder_interval_length <= epsilon_for_holder_length_stop) {
+      logger << "  Условие останова (ОСНОВНОЕ, по Гёльдеровской длине X_PARAM) "
+                "СРАБОТАЛО.\n";
+      exit_main_criteria_count++;
+      return true;
+    }
+
+    logger << "--- Конец CheckStoppingConditions (никакое условие не "
+              "сработало) ---"
+           << std::endl;
     return false;
   }
 
   void logTrialPointToFile(const Point &p, const std::string &prefix = "") {
     logger << prefix;
+    logger << std::fixed
+           << std::setprecision(15); // Устанавливаем точность для логгера
     logger << "x_param: " << p.x_param << ", z_value: " << p.z_value
            << ", y_coords: [";
     for (size_t i = 0; i < p.y_coords.size(); ++i) {
@@ -334,21 +391,20 @@ public:
         logger(log_stream), max_iterations_limit_member(max_iter),
         iteration_counter(0), exit_main_criteria_count(0),
         exit_test_criteria_count(0), use_peano_mapping_flag(false),
-        problem_actual_dimension(1), current_m_phi_estimate(1.0) {
+        problem_actual_dimension(1), current_r_mu_estimate(r_val),
+        current_max_mu_estimate(1.0) // Начальные значения
+  {
     if (problem_domain_a.empty() || problem_domain_b.empty()) {
-      // logger
-      //     << "ОШИБКА в конструкторе 1D: Границы задачи не могут быть
-      //     пустыми."
-      //     << std::endl;
-      // throw std::invalid_argument("Границы задачи (1D) не могут быть
-      // пустыми.");
+      logger
+          << "ОШИБКА в конструкторе 1D: Границы задачи не могут быть пустыми."
+          << std::endl;
+      throw std::invalid_argument("Границы задачи (1D) не могут быть пустыми.");
     }
     searchLeftBound_param = problem_domain_a;
     searchRightBound_param = problem_domain_b;
-    // logger << ">>>> 1D КОНСТРУКТОР MINIMIZER ВЫЗВАН (лог через ссылку
-    // ostream) "
-    //           "<<<<"
-    //        << std::endl;
+    logger << ">>>> 1D КОНСТРУКТОР MINIMIZER ВЫЗВАН (лог через ссылку ostream) "
+              "<<<<"
+           << std::endl;
   }
 
   Minimizer(double peano_search_param_a, double peano_search_param_b,
@@ -361,39 +417,39 @@ public:
         exit_test_criteria_count(0), use_peano_mapping_flag(true),
         peano_mapping_m_order(mapping_m_order),
         problem_actual_dimension(original_problem_dimension),
-        peano_mapping_key_type(mapping_key), current_m_phi_estimate(1.0) {
+        peano_mapping_key_type(mapping_key), current_r_mu_estimate(r_val),
+        current_max_mu_estimate(1.0) // Начальные значения
+  {
     searchLeftBound_param = {peano_search_param_a};
     searchRightBound_param = {peano_search_param_b};
-    // logger << ">>>> nD КОНСТРУКТОР MINIMIZER ВЫЗВАН (с Пеано, лог через
-    // ссылку "
-    //           "ostream) <<<<"
-    //        << std::endl;
+    logger << ">>>> nD КОНСТРУКТОР MINIMIZER ВЫЗВАН (с Пеано, лог через ссылку "
+              "ostream) <<<<"
+           << std::endl;
   }
 
   ~Minimizer() {
-    // logger << ">>>> MINIMIZER ДЕСТРУКТОР ВЫЗВАН <<<<" << std::endl;
+    logger << ">>>> MINIMIZER ДЕСТРУКТОР ВЫЗВАН <<<<" << std::endl;
   }
 
   std::vector<double> findMinimum() {
-    logger << ">>>> findMinimum() START <<<<" << std::endl;
+    logger << ">>>> findMinimum() НАЧАЛО <<<<" << std::endl;
     trial_points_list.clear();
     iteration_counter = 0;
     exit_main_criteria_count = 0;
     exit_test_criteria_count = 0;
 
-    logger << "  call performFirstIteration()..." << std::endl;
+    logger << "  Вызов performFirstIteration()..." << std::endl;
     performFirstIteration();
-    logger << "  performFirstIteration() ended. Trials in list: "
+    logger << "  performFirstIteration() ЗАВЕРШЕН. Точек в списке: "
            << trial_points_list.size() << std::endl;
 
     if (trial_points_list.size() < 2) {
-      // logger << "Ошибка: Первая итерация не создала достаточно точек для "
-      //           "начала основного цикла."
-      //        << std::endl;
+      logger << "Ошибка: Первая итерация не создала достаточно точек для "
+                "начала основного цикла."
+             << std::endl;
       if (!trial_points_list.empty())
-        return trial_points_list[0]
-            .y_coords; // Возвращаем хоть что-то если есть
-      return {};       // Пустой вектор если совсем ничего
+        return trial_points_list[0].y_coords;
+      return {};
     }
 
     for (int current_iter_loop = 0;
@@ -402,34 +458,59 @@ public:
       iteration_counter = current_iter_loop + 1;
 
       if (trial_points_list.size() < 2) {
-        // logger << "  В trial_points_list меньше 2 точек, невозможно "
-        //           "продолжить. Итерация: "
-        //        << iteration_counter << std::endl;
+        logger << "  В trial_points_list меньше 2 точек, невозможно "
+                  "продолжить. Итерация: "
+               << iteration_counter << std::endl;
         break;
       }
 
-      double max_abs_slope = 0.0;
+      // 1. Обновить оценку current_max_mu_estimate (M или mu_v) и
+      // current_r_mu_estimate (r*M)
+      current_max_mu_estimate = 0.0;
+      size_t idx_max_slope_p1 = 0, idx_max_slope_p2 = 0;
+
       for (size_t i = 0; i < trial_points_list.size() - 1; ++i) {
-        double dx_param =
+        // dx_param_raw используется для getHolderDelta, которое само возьмет
+        // модуль
+        double dx_param_raw =
             trial_points_list[i + 1].x_param - trial_points_list[i].x_param;
-        if (dx_param > 1e-12) {
-          double slope = std::abs((trial_points_list[i + 1].z_value -
-                                   trial_points_list[i].z_value) /
-                                  dx_param);
-          if (slope > max_abs_slope)
-            max_abs_slope = slope;
+        double holder_delta_for_slope = getHolderDelta(
+            trial_points_list[i].x_param, trial_points_list[i + 1].x_param);
+
+        if (holder_delta_for_slope >
+            1e-12) { // Знаменатель не должен быть слишком мал
+          double current_z_diff = std::abs(trial_points_list[i + 1].z_value -
+                                           trial_points_list[i].z_value);
+          double mu_val = current_z_diff / holder_delta_for_slope;
+          if (mu_val > current_max_mu_estimate) {
+            current_max_mu_estimate = mu_val;
+            idx_max_slope_p1 = i;
+            idx_max_slope_p2 = i + 1;
+          }
         }
       }
-      current_m_phi_estimate =
-          (max_abs_slope > 1e-9) ? r_strongin_parameter * max_abs_slope : 1.0;
+      // Если наклон 0 (или очень мал), mu_v=1 по книге. r_v*mu_v = r_v.
+      if (current_max_mu_estimate < 1e-9) {
+        current_max_mu_estimate = 1.0; // Это mu_v
+      }
+      current_r_mu_estimate =
+          r_strongin_parameter * current_max_mu_estimate; // Это r_v * mu_v
+
+      logger << "  Итерация " << iteration_counter
+             << ": current_max_mu_estimate (M) = " << current_max_mu_estimate
+             << " (на интервале x=["
+             << trial_points_list[idx_max_slope_p1].x_param << ", "
+             << trial_points_list[idx_max_slope_p2].x_param
+             << "]), current_r_mu_estimate (r*M) = " << current_r_mu_estimate
+             << std::endl;
 
       size_t interval_to_split_idx = findIntervalIndexWithMaxR();
 
       if (interval_to_split_idx + 1 >= trial_points_list.size()) {
-        // logger << "ОШИБКА: interval_to_split_idx (" << interval_to_split_idx
-        //        << ") указывает за пределы массива точек (размер "
-        //        << trial_points_list.size()
-        //        << "). Выход. Итерация: " << iteration_counter << std::endl;
+        logger << "ОШИБКА: interval_to_split_idx (" << interval_to_split_idx
+               << ") указывает за пределы массива точек (размер "
+               << trial_points_list.size()
+               << "). Выход. Итерация: " << iteration_counter << std::endl;
         break;
       }
 
@@ -444,20 +525,17 @@ public:
 
       bool already_exists_nearby = false;
       for (const auto &existing_p : trial_points_list) {
-        if (std::abs(existing_p.x_param - new_point.x_param) <
-            1e-10) { // Очень жесткий порог для "той же точки"
+        if (std::abs(existing_p.x_param - new_point.x_param) < 1e-10) {
           already_exists_nearby = true;
           break;
         }
       }
-
       if (already_exists_nearby) {
-        logger << "    New trial x_param=" << new_point.x_param
-               << " (z=" << new_point.z_value
-               << ") more close. Iteration: " << iteration_counter << std::endl;
-        // Если мы постоянно генерируем одну и ту же точку в очень маленьком
-        // интервале, основной критерий останова по длине интервала должен это
-        // поймать.
+        logger
+            << "    Новая точка x_param=" << new_point.x_param
+            << " (z=" << new_point.z_value
+            << ") очень близка к существующей. Пропуск добавления. Итерация: "
+            << iteration_counter << std::endl;
       } else {
         auto it_insert =
             std::lower_bound(trial_points_list.begin(), trial_points_list.end(),
@@ -465,7 +543,7 @@ public:
                                return p1.x_param < p2.x_param;
                              });
         trial_points_list.insert(it_insert, new_point);
-        logTrialPointToFile(new_point, "  New trial added: ");
+        logTrialPointToFile(new_point, "  Новая точка добавлена: ");
       }
     }
 
@@ -485,19 +563,18 @@ public:
       }
     }
 
-    logger << ">>>> findMinimum() END <<<<" << std::endl;
+    logger << ">>>> findMinimum() КОНЕЦ <<<<" << std::endl;
     if (valid_points_exist) {
-      logger << "Min finded in trial (x_param="
+      logger << "Минимум найден в точке (x_param="
              << trial_points_list[min_z_idx].x_param
              << ", z=" << trial_points_list[min_z_idx].z_value << ")"
              << std::endl;
-      logTrialPointToFile(trial_points_list[min_z_idx], "Best trial: ");
+      logTrialPointToFile(trial_points_list[min_z_idx], "Лучшая точка: ");
       return trial_points_list[min_z_idx].y_coords;
     }
 
-    // logger
-    //     << "Список пробных точек пуст или все точки NaN, оптимум не
-    //     найден.\n";
+    logger
+        << "Список пробных точек пуст или все точки NaN, оптимум не найден.\n";
     return {};
   }
 

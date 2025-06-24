@@ -151,7 +151,7 @@ void print_level_lines_json_to_stdout(
 }
 
 int main(int argc, char *argv[]) {
-  setlocale(LC_ALL, "Russian");
+  // setlocale(LC_ALL, "Russian");
 
   // --- Проверка на запрос данных для линий уровня ---
   if (argc > 1 && std::string(argv[1]) == "--get-level-lines") {
